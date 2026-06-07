@@ -16,6 +16,8 @@ import os
 import re
 import time
 
+from config import TRENDS_GEO
+
 try:
     from pytrends.request import TrendReq
     PYTRENDS_AVAILABLE = True
@@ -146,7 +148,7 @@ def _compute_trend_data(vals: list) -> dict:
 def fetch_trends(
     keywords: list,
     site: str,
-    geo: str = "BR",
+    geo: str = TRENDS_GEO,
     use_cache: bool = True,
     delay: float = 1.5,
 ) -> dict:

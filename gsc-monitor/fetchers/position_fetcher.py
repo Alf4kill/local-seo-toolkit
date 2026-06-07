@@ -8,15 +8,8 @@ from datetime import date, timedelta
 
 from googleapiclient.errors import HttpError
 
+from config import DAYS_BACK, GSC_DELAY_DAYS, ROW_LIMIT
 from core.urls import build_site_url, normalize_domain
-
-
-# ---------------------------------------------------------------------------
-# Configurações — modifique aqui conforme necessário
-# ---------------------------------------------------------------------------
-DAYS_BACK  = 30     # Número de dias retroativos para o período de análise
-ROW_LIMIT  = 25000  # Máximo de linhas da API (limite absoluto: 25000)
-# ---------------------------------------------------------------------------
 
 
 def _build_date_range(days_back: int = DAYS_BACK) -> tuple[str, str]:
@@ -24,7 +17,7 @@ def _build_date_range(days_back: int = DAYS_BACK) -> tuple[str, str]:
     Retorna (start_date, end_date) como strings ISO 8601.
     O GSC tem delay de ~2-3 dias, então end_date = hoje - 3 dias.
     """
-    end   = date.today() - timedelta(days=3)
+    end   = date.today() - timedelta(days=GSC_DELAY_DAYS)
     start = end - timedelta(days=days_back)
     return start.isoformat(), end.isoformat()
 

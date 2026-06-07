@@ -8,10 +8,9 @@ import time
 from datetime import date
 from googleapiclient.errors import HttpError
 
+from config import INSPECT_DELAY
 from core.classifier import classify
 from core.urls import build_site_url, normalize_domain
-
-DELAY_BETWEEN_REQUESTS = 0.5  # segundos — evita burst na quota (2000 req/dia)
 
 
 def inspect_urls(
@@ -110,6 +109,6 @@ def inspect_urls(
             set_inspect_cache(cache_site, today_str, url, result)
 
         if idx < total:
-            time.sleep(DELAY_BETWEEN_REQUESTS)
+            time.sleep(INSPECT_DELAY)
 
     return results

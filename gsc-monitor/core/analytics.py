@@ -10,6 +10,7 @@ Fase 4:
 import sys
 from collections import defaultdict
 
+from config import CANNIBAL_MAX_POSITION, CANNIBAL_MIN_IMPRESSIONS, HEALTH_WEIGHTS
 from core.ctr import expected_ctr
 
 
@@ -92,7 +93,9 @@ def calculate_health_score(
     pos = _pos_component(position_report)
     ctr = _ctr_component(position_report)
 
-    W_IDX, W_POS, W_CTR = 0.4, 0.4, 0.2
+    W_IDX = HEALTH_WEIGHTS["indexation"]
+    W_POS = HEALTH_WEIGHTS["position"]
+    W_CTR = HEALTH_WEIGHTS["ctr"]
 
     if consolidated is not None:
         total   = consolidated.get("total_urls", 0)
@@ -199,19 +202,12 @@ def print_orphan_pages(orphans: list, max_display: int = 20) -> None:
 # 4b — Canibalização de keywords
 # ---------------------------------------------------------------------------
 
-# Limiares para considerar que duas URLs REALMENTE competem por uma query.
-# Sem eles, qualquer query com 2+ URLs (mesmo uma com 1 impressão na posição 80)
-# era reportada como canibalização — gerando muito falso positivo.
-_CANNIBAL_MIN_IMPRESSIONS = 10   # URL precisa de volume mínimo para a query
-_CANNIBAL_MAX_POSITION    = 30   # URL muito abaixo não compete de fato
-
-
 def detect_cannibalization(query_rows: list) -> list:
     """
     Detecta queries onde 2+ URLs do site REALMENTE competem no Search Console.
 
     Uma URL só conta como concorrente se tiver volume e posição relevantes
-    (impressões ≥ _CANNIBAL_MIN_IMPRESSIONS e posição ≤ _CANNIBAL_MAX_POSITION).
+    (impressões ≥ CANNIBAL_MIN_IMPRESSIONS e posição ≤ CANNIBAL_MAX_POSITION).
     Queries que não atingem 2 concorrentes qualificados são descartadas.
 
     query_rows: lista de dicts {"query", "url", "clicks", "impressions", "ctr", "position"}
@@ -235,8 +231,8 @@ def detect_cannibalization(query_rows: list) -> list:
     for query, urls in groups.items():
         competing = [
             u for u in urls
-            if u.get("impressions", 0) >= _CANNIBAL_MIN_IMPRESSIONS
-            and u.get("position") and u["position"] <= _CANNIBAL_MAX_POSITION
+            if u.get("impressions", 0) >= CANNIBAL_MIN_IMPRESSIONS
+            and u.get("position") and u["position"] <= CANNIBAL_MAX_POSITION
         ]
         if len(competing) < 2:
             continue

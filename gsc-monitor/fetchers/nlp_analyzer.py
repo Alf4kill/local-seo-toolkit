@@ -21,6 +21,8 @@ import re
 import requests
 import time
 
+from config import NLP_DELAY
+
 NLP_ANNOTATE_URL = "https://language.googleapis.com/v1/documents:annotateText"
 NLP_ENTITIES_URL = "https://language.googleapis.com/v1/documents:analyzeEntities"
 TTL_NLP_HOURS    = 72
@@ -261,7 +263,7 @@ def analyze_opportunity_urls(
     api_key: "str | None" = None,
     use_cache: bool = True,
     max_urls: int = 5,
-    delay: float = 0.5,
+    delay: float = NLP_DELAY,
 ) -> dict:
     """
     Analisa entidades e categorias das URLs de oportunidade (posição 4–10).
