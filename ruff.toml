@@ -1,0 +1,21 @@
+# Ruff configuration for local-seo-toolkit (covers both gsc-monitor and
+# semantic-analyzer). The linter stays high-signal — it catches real problems
+# (pyflakes F, bugbear B, import order I, pyupgrade UP). Formatting is applied
+# separately via `ruff format`, which owns all whitespace/line-wrapping.
+#
+# Intentionally NOT enforced, because they fight deliberate choices in this code:
+#   E501 (line length)  — long Portuguese comments and hand-aligned tables.
+#   E701/E702 (one-line)— compact `if x: return` guards used throughout.
+#   E402 (import order) — CLI entry points reconfigure stdout to UTF-8 and adjust
+#                         sys.path BEFORE importing, by design.
+target-version = "py313"
+line-length = 100
+
+[lint]
+select = ["F", "I", "UP", "B"]
+# B905 (zip without explicit strict=) is behavior-sensitive — deferred to a
+# focused follow-up rather than changed blindly in a behavior-preserving batch.
+ignore = ["B905"]
+
+[format]
+# Defaults: double quotes, 4-space indent, magic trailing comma.
