@@ -4,6 +4,7 @@ Suporta sitemapindex (sitemaps aninhados) e fallback via robots.txt.
 """
 
 import xml.etree.ElementTree as ET
+
 import requests
 
 SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"

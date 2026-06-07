@@ -6,10 +6,9 @@ Suporta cache em disco para evitar rechamadas desnecessárias.
 
 from datetime import date, timedelta
 
-from googleapiclient.errors import HttpError
-
 from config import DAYS_BACK, GSC_DELAY_DAYS, ROW_LIMIT
 from core.urls import build_site_url, normalize_domain
+from googleapiclient.errors import HttpError
 
 
 def _build_date_range(days_back: int = DAYS_BACK) -> tuple[str, str]:
@@ -71,7 +70,7 @@ def fetch_positions(
     start_date, end_date = _build_date_range()
 
     print(f"[position_fetcher] Período  : {start_date}  a  {end_date}  ({DAYS_BACK} dias)")
-    print(f"[position_fetcher] País     : Global (sem filtro)")
+    print("[position_fetcher] País     : Global (sem filtro)")
 
     # ── Tentativa de cache hit ──────────────────────────────────────────────
     api_data = None
@@ -82,7 +81,7 @@ def fetch_positions(
 
     # ── Chamada à API (somente se cache miss ou --no-cache) ─────────────────
     if api_data is None:
-        print(f"[position_fetcher] Consultando Search Analytics API...")
+        print("[position_fetcher] Consultando Search Analytics API...")
 
         body = {
             "startDate":  start_date,
@@ -170,7 +169,7 @@ def fetch_query_positions(
     cache_site = normalize_domain(domain)
     start_date, end_date = _build_date_range()
 
-    print(f"[position_fetcher] Consultando queries (canibalização)...")
+    print("[position_fetcher] Consultando queries (canibalização)...")
 
     if use_cache:
         cached = get_query_cache(cache_site, start_date, end_date)

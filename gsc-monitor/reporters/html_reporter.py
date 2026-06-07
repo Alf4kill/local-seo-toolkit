@@ -13,7 +13,6 @@ import html
 import json
 from collections import Counter
 
-
 # ---------------------------------------------------------------------------
 # Paletas
 # ---------------------------------------------------------------------------
@@ -324,7 +323,6 @@ def _sec_saude(health: dict) -> str:
     grade = health["grade"]
     comp  = health["components"]
     color = _GRADE_HEX.get(grade, "#333")
-    bg    = _GRADE_BG.get(grade, "#eee")
 
     idx_val  = f"{comp['indexation']:.1f}" if comp["indexation"] is not None else "s/d"
     idx_pct  = comp["indexation"] if comp["indexation"] is not None else 0

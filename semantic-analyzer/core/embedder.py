@@ -42,7 +42,7 @@ def embed_texts(texts: list, model_name: str = DEFAULT_MODEL, backend: str = "au
                 raise ImportError(
                     "sentence-transformers não instalado. "
                     "Rode: pip install sentence-transformers"
-                )
+                ) from None
             print("[embedder] sentence-transformers ausente — usando TF-IDF (LÉXICO, não semântico).")
 
     from sklearn.feature_extraction.text import TfidfVectorizer

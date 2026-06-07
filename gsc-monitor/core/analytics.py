@@ -11,8 +11,8 @@ import sys
 from collections import defaultdict
 
 from config import CANNIBAL_MAX_POSITION, CANNIBAL_MIN_IMPRESSIONS, HEALTH_WEIGHTS
-from core.ctr import expected_ctr
 
+from core.ctr import expected_ctr
 
 # ---------------------------------------------------------------------------
 # 4d — Score de saúde do site

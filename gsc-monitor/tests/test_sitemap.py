@@ -10,7 +10,6 @@ e a extração de Sitemap: do robots.txt. Tudo offline.
 import core.sitemap as sm
 from core.sitemap import _parse_sitemap
 
-
 NS = sm.SITEMAP_NS
 
 

@@ -59,7 +59,7 @@ _PT_STOPWORDS = frozenset({
     "pelos", "pelas", "ao", "aos", "num", "numa", "dum", "duma",
     "este", "esta", "estes", "estas", "esse", "essa", "esses", "essas",
     "seu", "sua", "seus", "suas", "meu", "minha", "me",
-    "eu", "tu", "ele", "ela", "nos", "eles", "elas",
+    "eu", "tu", "ele", "ela", "eles", "elas",
     "foi", "ser", "ter", "tem", "vai", "vou", "ver", "são",
 })
 

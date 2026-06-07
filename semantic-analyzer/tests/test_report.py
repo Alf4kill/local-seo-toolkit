@@ -10,9 +10,9 @@ contratos que, se quebrarem, geram relatorio errado ou inseguro:
 """
 
 from core.report import (
-    _llm_html,
-    _diff_html,
     _collisions_html,
+    _diff_html,
+    _llm_html,
     generate_html,
 )
 

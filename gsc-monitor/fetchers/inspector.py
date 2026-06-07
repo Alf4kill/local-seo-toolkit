@@ -6,11 +6,11 @@ Suporta cache em disco para evitar rechamadas desnecessárias (cota: 2000/dia).
 
 import time
 from datetime import date
-from googleapiclient.errors import HttpError
 
 from config import INSPECT_DELAY
 from core.classifier import classify
 from core.urls import build_site_url, normalize_domain
+from googleapiclient.errors import HttpError
 
 
 def inspect_urls(

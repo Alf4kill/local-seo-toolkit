@@ -10,8 +10,8 @@ Cobre:
 
 import json
 import os
-import sys
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -19,10 +19,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.analytics import (
     calculate_health_score,
-    detect_orphan_pages,
     detect_cannibalization,
+    detect_orphan_pages,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -300,7 +299,7 @@ class TestLoadLatestConsolidated(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_retorna_mais_recente(self):
-        from core.storage import load_latest_consolidated, _get_domain_dir
+        from core.storage import _get_domain_dir, load_latest_consolidated
         domain_dir = _get_domain_dir("www.ex.com")
         # Cria dois arquivos consolidados
         data_old = {"total_urls": 10, "summary": {"indexed": {"total": 8, "percent": 80.0}}}

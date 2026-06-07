@@ -26,7 +26,6 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from gui.runner import run_tasks
 
-
 # ---------------------------------------------------------------------------
 # Paleta do terminal  (estilo VS Code dark)
 # ---------------------------------------------------------------------------

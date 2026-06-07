@@ -15,11 +15,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.content_quality import (
     analyze_content_quality,
     keyword_density,
-    vocab_diversity,
     salience_concentration,
     target_keywords_for_url,
+    vocab_diversity,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers para gerar textos sintéticos
@@ -185,6 +184,7 @@ class TestOrchestrator(unittest.TestCase):
 
     def test_seleciona_e_analisa(self):
         from unittest import mock
+
         import fetchers.content_fetcher as cf
 
         opp = [

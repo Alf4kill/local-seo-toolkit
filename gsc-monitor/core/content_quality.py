@@ -29,7 +29,6 @@ realmente ranqueia) — ver target_keywords_for_url().
 
 import re
 
-
 # ---------------------------------------------------------------------------
 # Limiares (ajustáveis — centralizados para facilitar calibração futura)
 # ---------------------------------------------------------------------------

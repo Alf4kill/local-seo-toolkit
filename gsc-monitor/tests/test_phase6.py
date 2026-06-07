@@ -10,7 +10,6 @@ Cobertura:
   - storage.save_dashboard: criação e sobrescrita
 """
 
-import json
 import os
 import shutil
 import sys
@@ -21,21 +20,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from reporters.html_reporter import (
     _classify_range,
-    _pos_chart_data,
-    _idx_chart_data,
     _hist_chart_data,
-    _trends_chart_data,
-    _sec_saude,
-    _sec_posicionamento,
+    _idx_chart_data,
+    _pos_chart_data,
+    _sec_canibalizacao,
+    _sec_historico,
     _sec_indexacao,
     _sec_kg,
-    _sec_historico,
-    _sec_trends,
-    _sec_canibalizacao,
     _sec_orfas,
+    _sec_posicionamento,
+    _sec_saude,
+    _sec_trends,
+    _trends_chart_data,
     generate_dashboard,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

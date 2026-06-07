@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.loaders import slugify, extract_text
+from core.loaders import extract_text, slugify
 
 
 class TestLoaders(unittest.TestCase):

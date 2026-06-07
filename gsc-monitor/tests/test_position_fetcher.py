@@ -9,8 +9,6 @@ desalinha cache, quebra a chamada de API ou consulta o período errado.
 
 from datetime import date, timedelta
 
-import pytest
-
 from core.urls import build_site_url, normalize_domain
 from fetchers.position_fetcher import _build_date_range
 

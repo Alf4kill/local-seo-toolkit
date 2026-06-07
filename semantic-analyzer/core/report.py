@@ -7,7 +7,6 @@ consolidação). O "representante" é a página mais central, sugerida como can�
 
 import html as H
 
-
 _LLM_BADGE = {
     "spun": ("#b03030", "#FFE0E0", "SPUN — mesmo texto reescrito"),
     "raso": ("#b06000", "#FFF2CC", "RASO — pouco conteúdo útil"),
@@ -432,7 +431,6 @@ def generate_html_gsc(clusters: list, title: str, backend: str, threshold: float
                       gsc_name: str, collisions: list = None, linkgraph: dict = None) -> str:
     multi = [c for c in clusters if c["size"] >= 2]
     multi.sort(key=lambda c: -c.get("group_impressions", 0))
-    total = sum(c["size"] for c in clusters)
     tot_clicks = sum(c.get("group_clicks", 0) for c in multi)
     tot_impr   = sum(c.get("group_impressions", 0) for c in multi)
 

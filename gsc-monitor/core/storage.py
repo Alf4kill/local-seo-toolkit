@@ -22,6 +22,7 @@ import os
 import re
 
 from config import BASE_DIR
+
 HISTORICO_PATH = os.path.join(BASE_DIR, "historico.json")
 RELATORIOS_DIR = os.path.join(BASE_DIR, "relatorios")
 
@@ -61,7 +62,7 @@ def load_historico() -> list[dict]:
     """Lê historico.json e retorna a lista de snapshots. Retorna [] se vazio."""
     if not os.path.exists(HISTORICO_PATH):
         return []
-    with open(HISTORICO_PATH, "r", encoding="utf-8") as f:
+    with open(HISTORICO_PATH, encoding="utf-8") as f:
         try:
             data = json.load(f)
             return data if isinstance(data, list) else []
@@ -268,7 +269,7 @@ def load_historico_posicao(site: str) -> dict:
     if not os.path.exists(path):
         return {"site": site, "snapshots": []}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict) and "snapshots" in data:
                 return data
@@ -345,7 +346,7 @@ def load_latest_consolidated(site: str) -> "dict | None":
     if not files:
         return None
     try:
-        with open(os.path.join(domain_dir, files[0]), "r", encoding="utf-8") as f:
+        with open(os.path.join(domain_dir, files[0]), encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return None

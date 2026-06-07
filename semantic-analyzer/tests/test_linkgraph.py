@@ -7,10 +7,17 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.linkgraph import (
-    extract_links, normalize_href, build_link_graph,
-    find_orphans, inlink_report, underlinked_money_pages,
-    anchor_collisions, cluster_link_plan,
-    detect_array_emitters, build_template_inbound, classify_pages,
+    anchor_collisions,
+    build_link_graph,
+    build_template_inbound,
+    classify_pages,
+    cluster_link_plan,
+    detect_array_emitters,
+    extract_links,
+    find_orphans,
+    inlink_report,
+    normalize_href,
+    underlinked_money_pages,
 )
 
 

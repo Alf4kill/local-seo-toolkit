@@ -54,7 +54,7 @@ class LLMClient:
             r = requests.post(self.url + "/chat/completions", json=payload, timeout=self.timeout)
             r.raise_for_status()
         except requests.RequestException as exc:
-            raise LLMUnavailable(f"Falha ao chamar LLM em {self.url}: {exc}")
+            raise LLMUnavailable(f"Falha ao chamar LLM em {self.url}: {exc}") from exc
         return r.json()["choices"][0]["message"]["content"]
 
     def unload(self) -> bool:
@@ -80,8 +80,8 @@ class TransformersClient:
     """
 
     def __init__(self, model: str = "Qwen/Qwen2.5-0.5B-Instruct", max_tokens: int = 500):
-        from transformers import AutoModelForCausalLM, AutoTokenizer
         import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
         self._torch = torch
         self.tok = AutoTokenizer.from_pretrained(model)
         self.model = AutoModelForCausalLM.from_pretrained(model)   # CPU float32 por padrão

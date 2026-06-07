@@ -8,12 +8,11 @@ Requer: openpyxl  (pip install openpyxl)
 """
 
 from collections import Counter
-from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 from core.ctr import expected_ctr
-
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 # ---------------------------------------------------------------------------
 # Paleta de cores por faixa de posição

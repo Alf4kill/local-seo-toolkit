@@ -6,8 +6,8 @@ que a GUI exiba o output em tempo real sem bloquear o event loop do Tkinter.
 """
 
 import os
-import sys
 import queue
+import sys
 import threading
 import traceback
 from datetime import date
@@ -18,7 +18,6 @@ if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
 from core.urls import normalize_domain
-
 
 # ---------------------------------------------------------------------------
 # Redirect de stdout para a queue
@@ -68,13 +67,16 @@ def _run_indexation(
 ) -> None:
     """Executa o relatório de indexação (URL Inspection API)."""
     from core.sitemap import fetch_urls
-    from fetchers.inspector import inspect_urls
-    from reporters.reporter import build_detailed, build_consolidated, print_consolidated
     from core.storage import (
-        build_snapshot, append_historico,
-        save_detailed_report, save_consolidated_report,
-        save_text_report, save_csv_indexacao,
+        append_historico,
+        build_snapshot,
+        save_consolidated_report,
+        save_csv_indexacao,
+        save_detailed_report,
+        save_text_report,
     )
+    from fetchers.inspector import inspect_urls
+    from reporters.reporter import build_consolidated, build_detailed, print_consolidated
 
     print(f"\n{'─' * 55}")
     print(f"  INDEXAÇÃO — {domain}")
@@ -128,20 +130,28 @@ def _run_position(
     result_store: "dict | None" = None,
 ) -> None:
     """Executa o relatório de posicionamento (Search Analytics API) + Fase 4."""
+    from core.analytics import (
+        calculate_health_score,
+        detect_cannibalization,
+        detect_orphan_pages,
+        print_cannibalization,
+        print_health_score,
+        print_orphan_pages,
+    )
     from core.sitemap import fetch_urls
+    from core.storage import (
+        append_historico_posicao,
+        load_historico_posicao,
+        load_latest_consolidated,
+        save_csv_posicao,
+        save_dashboard,
+        save_excel_report,
+        save_nlp_report,
+        save_position_report,
+        save_position_txt,
+    )
     from fetchers.position_fetcher import fetch_positions
     from reporters.position_reporter import build_position_report, print_position_report
-    from core.storage import (
-        save_position_report, save_position_txt,
-        save_excel_report, save_csv_posicao,
-        append_historico_posicao, load_historico_posicao, load_latest_consolidated,
-        save_dashboard, save_nlp_report,
-    )
-    from core.analytics import (
-        calculate_health_score, print_health_score,
-        detect_orphan_pages, print_orphan_pages,
-        detect_cannibalization, print_cannibalization,
-    )
 
     print(f"\n{'─' * 55}")
     print(f"  POSICIONAMENTO — {domain}")
@@ -185,7 +195,7 @@ def _run_position(
     print_orphan_pages(orphans)
 
     # Fase 5a — Knowledge Graph
-    from fetchers.knowledge_graph import search_entity, print_kg_result, load_api_key
+    from fetchers.knowledge_graph import load_api_key, print_kg_result, search_entity
     if api_key is None:
         api_key = load_api_key()
     kg_result = search_entity(domain, api_key=api_key, use_cache=use_cache)
@@ -209,7 +219,7 @@ def _run_position(
     # Fase 5b — tendências (pytrends)
     trends_data = None
     if do_trends and query_rows:
-        from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
+        from fetchers.trends_fetcher import fetch_trends, print_trends, top_keywords_from_queries
         top_kws = top_keywords_from_queries(query_rows)
         if top_kws:
             trends_data = fetch_trends(top_kws, domain, use_cache=use_cache)
@@ -351,7 +361,7 @@ def run_tasks(
             print(f"\n{'=' * 55}")
             print(f"  GSC Monitor — {domain} — {today}")
             if not use_cache:
-                print(f"  Modo: cache DESATIVADO")
+                print("  Modo: cache DESATIVADO")
             print(f"{'=' * 55}\n")
 
             from core.auth import build_service
@@ -376,7 +386,7 @@ def run_tasks(
                 )
 
             print(f"\n{'=' * 55}")
-            print(f"  Concluído.")
+            print("  Concluído.")
             print(f"{'=' * 55}\n")
 
         except Exception as exc:

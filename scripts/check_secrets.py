@@ -86,7 +86,7 @@ def scan(paths):
         if _skip_content(path):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 lines = f.readlines()
         except (OSError, UnicodeDecodeError):
             continue  # missing or binary

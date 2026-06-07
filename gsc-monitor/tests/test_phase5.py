@@ -8,20 +8,18 @@ Cobertura:
   Excel — novos parâmetros em generate_excel não quebram execução
 """
 
-import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fetchers.knowledge_graph import brand_from_domain
-from fetchers.trends_fetcher import top_keywords_from_queries, _classify_trend
+from fetchers.trends_fetcher import _classify_trend, top_keywords_from_queries
 from reporters.excel_reporter import generate_excel
-
 
 # ---------------------------------------------------------------------------
 # 5a — Knowledge Graph
@@ -59,8 +57,8 @@ class TestKGWithoutApiKey(unittest.TestCase):
 
     def test_cache_read_write(self):
         """Verifica que o cache KG lê e escreve corretamente."""
-        from fetchers.knowledge_graph import _read_kg_cache, _write_kg_cache
         import core.storage as st
+        from fetchers.knowledge_graph import _read_kg_cache, _write_kg_cache
 
         tmp = tempfile.mkdtemp()
         orig = st.RELATORIOS_DIR

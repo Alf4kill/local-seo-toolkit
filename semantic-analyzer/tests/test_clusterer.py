@@ -12,10 +12,9 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.clusterer import (
-    cosine_similarity_matrix,
-    cluster_by_threshold,
-    cluster_cohesion,
     build_clusters,
+    cluster_cohesion,
+    cosine_similarity_matrix,
     nearest_pairs,
 )
 

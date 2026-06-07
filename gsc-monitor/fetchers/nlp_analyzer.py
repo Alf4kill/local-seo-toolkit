@@ -18,9 +18,9 @@ Como habilitar:
 import html as html_module
 import os
 import re
-import requests
 import time
 
+import requests
 from config import NLP_DELAY
 
 NLP_ANNOTATE_URL = "https://language.googleapis.com/v1/documents:annotateText"
@@ -96,7 +96,7 @@ def _nlp_cache_key(url: str) -> str:
 
 
 def _get_nlp_cache(site: str, url: str) -> "dict | None":
-    from core.cache import _cache_dir, _read_entry, _is_fresh
+    from core.cache import _cache_dir, _is_fresh, _read_entry
     key   = _nlp_cache_key(url)
     path  = os.path.join(_cache_dir(site), f"{key}.json")
     entry = _read_entry(path)

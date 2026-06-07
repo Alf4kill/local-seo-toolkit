@@ -26,16 +26,26 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core.loaders import (
-    load_from_folder, load_from_primeweb, load_from_urls,
-    load_sources_from_folder, load_sources_from_urls,
-)
-from core.embedder import embed_texts_cached
 from core.clusterer import build_clusters, nearest_pairs
+from core.embedder import embed_texts_cached
+from core.loaders import (
+    load_from_folder,
+    load_from_primeweb,
+    load_from_urls,
+    load_sources_from_folder,
+    load_sources_from_urls,
+)
 from core.report import (
-    print_clusters, print_nearest, generate_html,
-    print_clusters_gsc, generate_html_gsc, print_llm_judgments, print_differentiation,
-    print_keyword_collisions, print_link_audit, print_link_plan,
+    generate_html,
+    generate_html_gsc,
+    print_clusters,
+    print_clusters_gsc,
+    print_differentiation,
+    print_keyword_collisions,
+    print_link_audit,
+    print_link_plan,
+    print_llm_judgments,
+    print_nearest,
 )
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
@@ -118,7 +128,7 @@ def _make_llm_client(args):
         from core.llm import TransformersClient
         print("[llm] Carregando modelo local (transformers, CPU — pode demorar)...")
         return TransformersClient(model=args.llm_model or "Qwen/Qwen2.5-0.5B-Instruct")
-    from core.llm import LLMClient, DEFAULT_URL, DEFAULT_MODEL
+    from core.llm import DEFAULT_MODEL, DEFAULT_URL, LLMClient
     client = LLMClient(url=args.llm_url or DEFAULT_URL, model=args.llm_model or DEFAULT_MODEL)
     if not client.available():
         print(f"[llm] Nenhum servidor LLM em {client.url}.")
@@ -167,7 +177,7 @@ def main():
     gsc = None
     gsc_name = None
     if args.gsc:
-        from core.gsc_link import load_gsc_positions, enrich_clusters
+        from core.gsc_link import enrich_clusters, load_gsc_positions
         gsc, gsc_name = load_gsc_positions(args.gsc)
         enrich_clusters(clusters, gsc)
         matched = sum(1 for c in clusters for m in c["members_gsc"] if m.get("has_data"))
@@ -207,9 +217,14 @@ def main():
     #     canibalização de âncora + plano hub-and-spoke por grupo (usa o diff se houver).
     linkgraph = None
     if args.linkgraph:
-        from core.linkgraph import (build_link_graph, find_orphans, inlink_report,
-                                     underlinked_money_pages, anchor_collisions,
-                                     cluster_link_plan)
+        from core.linkgraph import (
+            anchor_collisions,
+            build_link_graph,
+            cluster_link_plan,
+            find_orphans,
+            inlink_report,
+            underlinked_money_pages,
+        )
         # O grafo precisa do SITE INTEIRO: os artigos linkam p/ páginas de categoria/
         # produto que NÃO estão em $blog/$palavras_chave. Por isso lemos todos os .php
         # da pasta (não só os do array) — senão os destinos caem fora de `known` e o
@@ -228,8 +243,7 @@ def main():
         # linka TODOS os artigos; more-articles faz array_rand→widget. O PHP é
         # removido na extração estática, então classificamos as páginas em 3 níveis
         # honestos: com link CONTEXTUAL / só template (índice/widget) / órfã de fato.
-        from core.linkgraph import (parse_primeweb_arrays, build_template_inbound,
-                                     classify_pages)
+        from core.linkgraph import build_template_inbound, classify_pages, parse_primeweb_arrays
         base_for_arrays = args.primeweb or args.folder
         classification = None
         if base_for_arrays:

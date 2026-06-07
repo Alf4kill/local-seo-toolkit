@@ -10,10 +10,11 @@ Obtido em: Google Cloud Console → APIs e Serviços → Credenciais →
 """
 
 import os
+
 from config import BASE_DIR
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]

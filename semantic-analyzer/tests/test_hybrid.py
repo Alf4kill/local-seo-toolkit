@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.hybrid import build_prompt, judge_clusters, build_diff_prompt, differentiate_clusters
+from core.hybrid import build_diff_prompt, build_prompt, differentiate_clusters, judge_clusters
 
 
 class FakeClient:

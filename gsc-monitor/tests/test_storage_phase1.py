@@ -13,14 +13,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.storage import (
-    _safe_filename,
     _get_domain_dir,
     _report_path,
-    save_detailed_report,
-    save_consolidated_report,
+    _safe_filename,
     save_csv_indexacao,
-    save_position_report,
     save_csv_posicao,
+    save_detailed_report,
 )
 
 DOMAIN = "www.exemplo.com.br"

@@ -13,10 +13,10 @@ Como obter a API key:
 
 import json
 import os
-import requests
 from datetime import datetime, timedelta
-from config import BASE_DIR
 
+import requests
+from config import BASE_DIR
 
 KG_API_URL   = "https://kgsearch.googleapis.com/v1/entities:search"
 TTL_KG_HOURS = 168   # 7 dias — entidades mudam raramente
@@ -34,7 +34,7 @@ def load_api_key() -> "str | None":
     key_file = os.path.join(BASE_DIR, "google_api_key.txt")
     if os.path.exists(key_file):
         try:
-            with open(key_file, "r", encoding="utf-8") as f:
+            with open(key_file, encoding="utf-8") as f:
                 return f.read().strip() or None
         except OSError:
             pass
@@ -118,7 +118,7 @@ def _read_kg_cache(domain: str) -> "dict | None":
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             entry = json.load(f)
         cached_at = datetime.fromisoformat(entry.get("cached_at", "2000-01-01"))
         if (datetime.now() - cached_at) <= timedelta(hours=TTL_KG_HOURS):
@@ -172,10 +172,6 @@ def search_entity(
         print("[knowledge_graph] API key não configurada — consulta KG ignorada.")
         print("[knowledge_graph] Configure GOOGLE_API_KEY ou crie google_api_key.txt.")
         return None
-
-    # 'clean' é usado apenas como termo de busca (sem www/sc-domain).
-    # O cache usa o 'domain' completo para ficar no diretório correto.
-    clean = domain.removeprefix("www.").removeprefix("sc-domain:")
 
     if use_cache:
         cached = _read_kg_cache(domain)

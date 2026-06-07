@@ -8,7 +8,6 @@ silencioso.
 """
 
 import pytest
-
 from config import CTR_BENCHMARK
 from core.ctr import expected_ctr
 

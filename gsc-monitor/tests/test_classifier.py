@@ -9,8 +9,7 @@ desconhecidos.
 """
 
 import pytest
-
-from core.classifier import classify, VERDICT_MAP
+from core.classifier import VERDICT_MAP, classify
 
 
 class TestClassify:

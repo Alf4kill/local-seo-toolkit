@@ -13,8 +13,9 @@ sinais semânticos do Google (saliência, amplitude temática, categoria).
 import os
 import re
 
-from fetchers.nlp_analyzer import _fetch_page_text
 from core.content_quality import analyze_content_quality, target_keywords_for_url
+
+from fetchers.nlp_analyzer import _fetch_page_text
 
 TTL_TEXT_HOURS = 72   # texto editorial muda pouco; cache evita re-download
 
@@ -29,7 +30,7 @@ def _text_cache_key(url: str) -> str:
 
 
 def _get_text_cache(site: str, url: str) -> "str | None":
-    from core.cache import _cache_dir, _read_entry, _is_fresh
+    from core.cache import _cache_dir, _is_fresh, _read_entry
     path  = os.path.join(_cache_dir(site), f"{_text_cache_key(url)}.json")
     entry = _read_entry(path)
     if entry and _is_fresh(entry, TTL_TEXT_HOURS):

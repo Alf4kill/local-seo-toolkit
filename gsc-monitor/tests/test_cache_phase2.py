@@ -17,18 +17,22 @@ Execute com:  py test_cache_phase2.py
 import json
 import os
 import shutil
+
+# ── Garante que o diretório gsc-monitor está no path ─────────────────────────
+import sys
 from datetime import datetime, timedelta
 
 import pytest
 
-# ── Garante que o diretório gsc-monitor está no path ─────────────────────────
-import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.cache import (
-    get_posicao_cache, set_posicao_cache,
-    get_inspect_cache, set_inspect_cache,
-    _cache_path, _cache_dir,
+    _cache_dir,
+    _cache_path,
+    get_inspect_cache,
+    get_posicao_cache,
+    set_inspect_cache,
+    set_posicao_cache,
 )
 
 DOMAIN    = "www.cache-test.com.br"
@@ -80,7 +84,7 @@ def check(condition: bool, msg: str) -> None:
 def _force_expire(site: str, key_prefix: str, suffix: str) -> None:
     """Sobrescreve o cached_at com uma data antiga para simular expiração."""
     path = _cache_path(site, f"{key_prefix}_{suffix}")
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         entry = json.load(f)
     entry["cached_at"] = (datetime.now() - timedelta(hours=200)).isoformat()
     with open(path, "w", encoding="utf-8") as f:
@@ -144,7 +148,7 @@ def test_inspect_incremental():
 
     # Ambas as URLs devem estar no mesmo arquivo
     path = _cache_path(DOMAIN, f"inspect_{TODAY}")
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         entry = json.load(f)
 
     check(FAKE_INSPECT_RESULT["url"] in entry["data"], "URL 1 preservada após inserção de URL 2")
@@ -173,7 +177,7 @@ def test_inspect_ttl_expirado():
 
 def test_corrupcao():
     print("\n--- Teste 8: arquivo corrompido não levanta exceção ---")
-    path = _cache_path(DOMAIN, f"posicao_corrupto")
+    path = _cache_path(DOMAIN, "posicao_corrupto")
     with open(path, "w", encoding="utf-8") as f:
         f.write("{isso nao e json valido!!!")
 

@@ -17,7 +17,6 @@ Exemplos:
 """
 
 import sys
-import os
 
 # Força UTF-8 no stdout/stderr para caracteres Unicode funcionarem em qualquer
 # terminal Windows (que usa cp1252 por padrão no Python 3.13).
@@ -26,30 +25,34 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# Adiciona a pasta vendor/ ao path para uso em servidores sem pip global
-_vendor = os.path.join(os.path.dirname(__file__), "vendor")
-if os.path.isdir(_vendor) and _vendor not in sys.path:
-    sys.path.insert(0, _vendor)
-
 import argparse
 from datetime import date
 
+from core.analytics import (
+    calculate_health_score,
+    detect_cannibalization,
+    detect_orphan_pages,
+    print_cannibalization,
+    print_health_score,
+    print_orphan_pages,
+)
 from core.auth import build_service
 from core.sitemap import fetch_urls
+from core.storage import (
+    append_historico_posicao,
+    load_historico_posicao,
+    load_latest_consolidated,
+    save_csv_posicao,
+    save_dashboard,
+    save_excel_report,
+    save_nlp_report,
+    save_position_report,
+    save_position_txt,
+)
 from core.urls import normalize_domain
+from fetchers.knowledge_graph import load_api_key, print_kg_result, search_entity
 from fetchers.position_fetcher import fetch_positions
 from reporters.position_reporter import build_position_report, print_position_report
-from core.storage import (
-    save_position_report, save_position_txt, save_excel_report, save_csv_posicao,
-    append_historico_posicao, load_historico_posicao, load_latest_consolidated,
-    save_dashboard, save_nlp_report,
-)
-from core.analytics import (
-    calculate_health_score, print_health_score,
-    detect_orphan_pages, print_orphan_pages,
-    detect_cannibalization, print_cannibalization,
-)
-from fetchers.knowledge_graph import search_entity, print_kg_result, load_api_key
 
 
 def parse_args() -> argparse.Namespace:
@@ -201,7 +204,7 @@ def main() -> None:
     # 13. Fase 5b — tendências (pytrends)
     trends_data = None
     if args.trends and query_rows:
-        from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
+        from fetchers.trends_fetcher import fetch_trends, print_trends, top_keywords_from_queries
         top_kws = top_keywords_from_queries(query_rows)
         if top_kws:
             trends_data = fetch_trends(top_kws, domain, use_cache=not args.no_cache)

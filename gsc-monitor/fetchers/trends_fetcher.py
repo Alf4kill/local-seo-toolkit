@@ -41,7 +41,7 @@ def _normalize_kw(kw: str) -> str:
 
 
 def _get_trends_cache(site: str, keyword: str, geo: str) -> "dict | None":
-    from core.cache import _cache_dir, _read_entry, _is_fresh
+    from core.cache import _cache_dir, _is_fresh, _read_entry
     key   = f"trends_{_normalize_kw(keyword)}_{geo}"
     path  = os.path.join(_cache_dir(site), f"{key}.json")
     entry = _read_entry(path)

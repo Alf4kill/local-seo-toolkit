@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.dedup import normalize_kw, find_keyword_collisions
+from core.dedup import find_keyword_collisions, normalize_kw
 
 
 def _diffed(groups):
