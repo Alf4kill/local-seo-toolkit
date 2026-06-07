@@ -1,0 +1,59 @@
+# ════════════════════════ SECRETS — never commit ════════════════════════
+# Google OAuth2 + API credentials (real values stay strictly local)
+client_secrets.json
+token.json
+credentials.json
+google_api_key.txt
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+# Environment files (the *.example templates are kept; real ones ignored)
+.env
+.env.*
+!.env.example
+
+# ═══════════════ CLIENT DATA — confidential, never publish ═══════════════
+# Generated reports (real client domains, GSC metrics, page content)
+relatorios/
+relatorios-analise/
+historico.json
+historico_posicao.json
+# Client deliverables / exports
+*.docx
+*.xlsx
+# Live-crawl URL lists (real client URLs)
+*_urls.txt
+!*.example.txt
+
+# ════════════════════════ Generated artifacts ═══════════════════════════
+# semantic-analyzer
+.cache/
+*.npy
+labels_*.json
+clusters_*.html
+plano*.html
+consolidacao*.html
+diferenciacao*.html
+*.log
+
+# ══════════════════════════════ Python ══════════════════════════════════
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+pytest-cache-files-*/
+.mypy_cache/
+.ruff_cache/
+
+# ═════════════════════════ Editor / OS / local ══════════════════════════
+.claude/settings.local.json
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

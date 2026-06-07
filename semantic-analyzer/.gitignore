@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Artefatos gerados / cache de embeddings
+.cache/
+*.npy
+*.log
+labels_*.json
+clusters_*.html
+plano*.html
+
+# Relatórios organizados por site (gerados; podem conter dados de cliente)
+relatorios/

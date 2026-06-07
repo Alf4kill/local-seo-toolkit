@@ -1,0 +1,14 @@
+# Pre-commit hooks for this repo.
+# Enable once:  pip install pre-commit  &&  pre-commit install
+#
+# The secret scanner is a LOCAL, zero-dependency Python script
+# (scripts/check_secrets.py) — no external repos are downloaded.
+repos:
+  - repo: local
+    hooks:
+      - id: block-secrets
+        name: Block secrets & credentials
+        entry: python scripts/check_secrets.py --staged
+        language: system
+        pass_filenames: false
+        always_run: true

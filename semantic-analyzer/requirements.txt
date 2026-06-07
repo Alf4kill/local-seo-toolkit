@@ -1,0 +1,9 @@
+# Núcleo (clusterer) — só numpy:
+numpy>=1.26
+
+# Embeddings semânticos (recomendado) — puxa torch + transformers automaticamente.
+# Roda em CPU; 1º uso baixa o modelo (~470MB).
+sentence-transformers>=3.0
+
+# Fallback léxico (TF-IDF) e utilitários. (scikit-learn também vem com sentence-transformers.)
+scikit-learn>=1.4

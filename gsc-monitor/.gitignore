@@ -1,0 +1,17 @@
+# Credenciais OAuth2 e tokens — NUNCA commitar
+client_secrets.json
+token.json
+credentials.json
+google_api_key.txt
+
+# Dados gerados — opcionais no repositório
+historico.json
+relatorios/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
