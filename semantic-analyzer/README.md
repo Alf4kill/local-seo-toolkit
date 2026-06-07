@@ -101,7 +101,7 @@ enxergar a placa (12 GiB) e rodar 100% na GPU. Modelos recomendados p/ 12 GB:
 
 ## Testes
 ```powershell
-py -m unittest discover -s tests -t .
+py -m pytest
 ```
 
 ## Estrutura
@@ -119,5 +119,5 @@ core/
   report.py          relatórios console + HTML
 relatorios/<site>/   relatórios gerados, organizados por site/data (estilo gsc-monitor):
                      AAAA-MM-DD_<tipo>.html  (clusters/consolidacao/links/diferenciacao/plano-completo)
-tests/               67 testes (núcleo numpy + LLM/hybrid/dedup/linkgraph sem servidor/ML)
+tests/               80 testes (núcleo numpy + LLM/hybrid/dedup/linkgraph sem servidor/ML)
 ```

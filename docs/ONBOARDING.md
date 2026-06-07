@@ -151,8 +151,8 @@ persists it) because Ollama's ROCm doesn't support that card on Windows. See
 Run both test suites. They're fast, fully offline, and spend no API quota.
 
 ```powershell
-cd gsc-monitor        ; py -m pytest        # ~148 tests
-cd ..\semantic-analyzer ; py -m pytest      # ~49 tests
+cd gsc-monitor        ; py -m pytest        # ~154 tests
+cd ..\semantic-analyzer ; py -m pytest      # ~80 tests
 ```
 
 Green suites mean the pure logic and report generators work; a real end-to-end

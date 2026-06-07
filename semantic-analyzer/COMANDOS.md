@@ -284,5 +284,5 @@ py analisar.py --primeweb "E:\projetos\backup\exemplo" `
 ## Testes
 
 ```powershell
-py -m unittest discover -s tests -t .
+py -m pytest
 ```

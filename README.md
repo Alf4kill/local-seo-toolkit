@@ -99,8 +99,8 @@ domains like `exemplo.com.br` — never a real client.
 ## Tech stack
 
 Python 3.13 throughout. `gsc-monitor` uses `google-api-python-client`,
-`openpyxl`, `requests`, Tkinter, and optional `pytrends`; tests run on the
-standard-library `unittest` (and `pytest` as the single runner).
+`openpyxl`, `requests`, Tkinter, and optional `pytrends`; tests run with
+`pytest` as the single runner.
 `semantic-analyzer` uses `numpy`, `sentence-transformers` (+`torch`),
 `scikit-learn`, and talks to a local LLM over an OpenAI-compatible HTTP API.
 

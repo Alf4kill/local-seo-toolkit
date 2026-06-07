@@ -237,8 +237,8 @@ gsc-monitor/
 - Usa `result_store["dashboard_path"]` (caminho da última execução) ou calcula o caminho a partir do domínio digitado
 
 **Testes:** `test_phase6.py` — 34/34 testes passaram
-**Total acumulado:** 11+9 (F1-F2, script) + 21 (F4) + 27 (F5) + 34 (F6) = 102 testes
-`py -m unittest discover` → 82 testes (F4 + F5 + F6, unittest-based)
+**Total acumulado (à época):** 11+9 (F1-F2) + 21 (F4) + 27 (F5) + 34 (F6) = 102 testes.
+Hoje a suíte roda com `py -m pytest` (runner único) e soma **154 testes**.
 
 ---
 
@@ -270,4 +270,4 @@ openpyxl>=3.1.0
 9. **API key Google Cloud:** env `GOOGLE_API_KEY` ou arquivo `google_api_key.txt` ou campo na GUI
 10. **pytrends:** requer `pip install pytrends`; sem ela `--trends` imprime instrução e pula
 11. **Dashboard HTML:** gerado automaticamente em `relatorios/{dominio}/dashboard.html` a cada execução de posicionamento; botão "Dashboard" na GUI abre no navegador
-12. **Rodar todos os testes:** `py -m unittest discover -s tests -t .` (82 tests, F4+F5+F6) ou individualmente: `py tests/test_storage_phase1.py`, `py tests/test_cache_phase2.py`
+12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 154 testes).
