@@ -12,24 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-
-# ---------------------------------------------------------------------------
-# Benchmarks de CTR esperado por posição no Google (média de mercado)
-# Modifique aqui se quiser usar referências diferentes
-# ---------------------------------------------------------------------------
-CTR_BENCHMARK = {
-    1:  28.5,
-    2:  15.7,
-    3:  11.0,
-    4:   8.0,
-    5:   7.2,
-    6:   5.1,
-    7:   4.0,
-    8:   3.2,
-    9:   2.8,
-    10:  2.5,
-}
-# ---------------------------------------------------------------------------
+from core.ctr import expected_ctr
 
 
 # ---------------------------------------------------------------------------
@@ -119,21 +102,6 @@ ACOES = {
 # Score de oportunidade de CTR
 # ---------------------------------------------------------------------------
 
-def _expected_ctr(position: float) -> float | None:
-    """
-    Interpola o CTR esperado (%) para posições decimais.
-    Retorna None se posição > 10.
-    """
-    if position is None or position > 10:
-        return None
-    pos_floor = max(1, min(int(position), 10))
-    pos_ceil  = min(pos_floor + 1, 10)
-    frac      = position - int(position)
-    ctr_low   = CTR_BENCHMARK.get(pos_floor, CTR_BENCHMARK[10])
-    ctr_high  = CTR_BENCHMARK.get(pos_ceil,  CTR_BENCHMARK[10])
-    return ctr_low + frac * (ctr_high - ctr_low)
-
-
 def _opportunity_score(row: dict) -> float:
     """
     Cliques estimados perdidos vs. benchmark de CTR.
@@ -141,7 +109,7 @@ def _opportunity_score(row: dict) -> float:
     """
     if not row["has_data"] or row["position"] is None or row["position"] > 10:
         return 0.0
-    exp = _expected_ctr(row["position"])
+    exp = expected_ctr(row["position"])
     if exp is None:
         return 0.0
     return round(row["impressions"] * max(0.0, exp - row["ctr"]) / 100, 1)
@@ -421,7 +389,7 @@ def _build_sheet_oportunidades(
     for r in rows:
         if not r["has_data"] or r["position"] is None or r["position"] > 10:
             continue
-        exp_ctr = _expected_ctr(r["position"])
+        exp_ctr = expected_ctr(r["position"])
         if exp_ctr is None:
             continue
         score        = _opportunity_score(r)

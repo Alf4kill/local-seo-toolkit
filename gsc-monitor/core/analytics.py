@@ -10,26 +10,7 @@ Fase 4:
 import sys
 from collections import defaultdict
 
-
-# ---------------------------------------------------------------------------
-# CTR esperado por posição (benchmark de mercado — idêntico ao excel_reporter)
-# ---------------------------------------------------------------------------
-
-_CTR_BENCHMARK = {
-    1: 28.5, 2: 15.7, 3: 11.0, 4: 8.0, 5: 7.2,
-    6: 5.1,  7: 4.0,  8: 3.2,  9: 2.8, 10: 2.5,
-}
-
-
-def _expected_ctr(position: float) -> float | None:
-    if position is None or position > 10:
-        return None
-    pos_floor = max(1, min(int(position), 10))
-    pos_ceil  = min(pos_floor + 1, 10)
-    frac      = position - int(position)
-    ctr_low   = _CTR_BENCHMARK[pos_floor]
-    ctr_high  = _CTR_BENCHMARK.get(pos_ceil, _CTR_BENCHMARK[10])
-    return ctr_low + frac * (ctr_high - ctr_low)
+from core.ctr import expected_ctr
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +57,7 @@ def _ctr_component(position_report: dict) -> float:
 
     total, count = 0.0, 0
     for r in page1:
-        exp = _expected_ctr(r["position"])
+        exp = expected_ctr(r["position"])
         if exp and exp > 0:
             total += min(1.0, r["ctr"] / exp)
             count += 1
