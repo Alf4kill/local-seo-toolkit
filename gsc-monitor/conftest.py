@@ -40,4 +40,5 @@ def _isolar_relatorios():
         storage.RELATORIOS_DIR = original
         # best-effort: não falha o teste se o SO travar a remoção
         import shutil
+
         shutil.rmtree(tmp, ignore_errors=True)

@@ -21,20 +21,21 @@ from core.clusterer import (
 
 def _toy_embeddings():
     # 3 vetores ~ eixo X (grupo A), 2 ~ eixo Y (grupo B), 1 ~ eixo Z (isolado)
-    emb = np.array([
-        [1.0, 0.0, 0.0],
-        [0.95, 0.05, 0.0],
-        [0.90, 0.10, 0.0],   # A
-        [0.0, 1.0, 0.0],
-        [0.05, 0.95, 0.0],   # B
-        [0.0, 0.0, 1.0],     # isolado
-    ])
+    emb = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.95, 0.05, 0.0],
+            [0.90, 0.10, 0.0],  # A
+            [0.0, 1.0, 0.0],
+            [0.05, 0.95, 0.0],  # B
+            [0.0, 0.0, 1.0],  # isolado
+        ]
+    )
     labels = ["a1", "a2", "a3", "b1", "b2", "c1"]
     return emb, labels
 
 
 class TestClusterer(unittest.TestCase):
-
     def test_cosine_matrix_shape_and_diag(self):
         emb, _ = _toy_embeddings()
         sim = cosine_similarity_matrix(emb)
@@ -69,9 +70,9 @@ class TestClusterer(unittest.TestCase):
     def test_cohesion_singleton_e_grupo(self):
         emb, labels = _toy_embeddings()
         sim = cosine_similarity_matrix(emb)
-        self.assertEqual(cluster_cohesion([5], sim), 1.0)         # isolado
+        self.assertEqual(cluster_cohesion([5], sim), 1.0)  # isolado
         coes_a = cluster_cohesion([0, 1, 2], sim)
-        self.assertGreater(coes_a, 0.9)                            # grupo A bem coeso
+        self.assertGreater(coes_a, 0.9)  # grupo A bem coeso
 
     def test_nearest_pairs(self):
         emb, labels = _toy_embeddings()
@@ -84,15 +85,15 @@ class TestClusterer(unittest.TestCase):
 
 
 class TestAgglomerative(unittest.TestCase):
-
     def test_agglomerative_matches_toy(self):
         try:
             import sklearn  # noqa: F401
         except ImportError:
             self.skipTest("sklearn não instalado")
         emb, labels = _toy_embeddings()
-        clusters, _ = build_clusters(emb, labels, threshold=0.8,
-                                     method="agglomerative", linkage="complete")
+        clusters, _ = build_clusters(
+            emb, labels, threshold=0.8, method="agglomerative", linkage="complete"
+        )
         self.assertEqual(sorted(c["size"] for c in clusters), [1, 2, 3])
         biggest = clusters[0]
         self.assertEqual(set(biggest["members"]), {"a1", "a2", "a3"})

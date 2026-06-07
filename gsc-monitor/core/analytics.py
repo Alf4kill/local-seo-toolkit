@@ -18,6 +18,7 @@ from core.ctr import expected_ctr
 # 4d — Score de saúde do site
 # ---------------------------------------------------------------------------
 
+
 def _pos_component(position_report: dict) -> float:
     """
     Componente posicionamento: 0–100 baseado na posição das URLs com dados,
@@ -29,8 +30,7 @@ def _pos_component(position_report: dict) -> float:
     páginas que recebem impressões estão bem posicionadas.
     """
     with_data = [
-        r for r in position_report.get("urls", [])
-        if r["has_data"] and r["position"] is not None
+        r for r in position_report.get("urls", []) if r["has_data"] and r["position"] is not None
     ]
     if not with_data:
         return 0.0
@@ -50,7 +50,8 @@ def _ctr_component(position_report: dict) -> float:
     Retorna 50 (neutro) quando não há URLs na 1ª página para avaliar.
     """
     page1 = [
-        r for r in position_report.get("urls", [])
+        r
+        for r in position_report.get("urls", [])
         if r["has_data"] and r["position"] is not None and r["position"] <= 10
     ]
     if not page1:
@@ -98,35 +99,39 @@ def calculate_health_score(
     W_CTR = HEALTH_WEIGHTS["ctr"]
 
     if consolidated is not None:
-        total   = consolidated.get("total_urls", 0)
+        total = consolidated.get("total_urls", 0)
         idx_pct = (
             consolidated.get("summary", {}).get("indexed", {}).get("percent", 0.0)
-            if total > 0 else 0.0
+            if total > 0
+            else 0.0
         )
-        score   = round(idx_pct * W_IDX + pos * W_POS + ctr * W_CTR, 1)
+        score = round(idx_pct * W_IDX + pos * W_POS + ctr * W_CTR, 1)
         has_idx = True
     else:
         idx_pct = None
         # Sem indexação: re-normaliza pesos para Posição + CTR (não inventa 50).
-        denom   = W_POS + W_CTR  # 0.6
-        score   = round(pos * (W_POS / denom) + ctr * (W_CTR / denom), 1)
+        denom = W_POS + W_CTR  # 0.6
+        score = round(pos * (W_POS / denom) + ctr * (W_CTR / denom), 1)
         has_idx = False
 
     grade = (
-        "Excelente" if score >= 80 else
-        "Bom"       if score >= 60 else
-        "Regular"   if score >= 40 else
-        "Crítico"
+        "Excelente"
+        if score >= 80
+        else "Bom"
+        if score >= 60
+        else "Regular"
+        if score >= 40
+        else "Crítico"
     )
 
     return {
-        "score":               score,
-        "grade":               grade,
+        "score": score,
+        "grade": grade,
         "has_indexation_data": has_idx,
         "components": {
             "indexation": idx_pct,
-            "position":   pos,
-            "ctr":        ctr,
+            "position": pos,
+            "ctr": ctr,
         },
     }
 
@@ -135,7 +140,7 @@ def print_health_score(health: dict) -> None:
     """Exibe o score de saúde no terminal."""
     score = health["score"]
     grade = health["grade"]
-    comp  = health["components"]
+    comp = health["components"]
 
     filled = int(score / 5)
     # Tenta caracteres Unicode; cai para ASCII se o terminal não suportar (ex: cp1252)
@@ -167,6 +172,7 @@ def print_health_score(health: dict) -> None:
 # ---------------------------------------------------------------------------
 # 4a — Páginas órfãs
 # ---------------------------------------------------------------------------
+
 
 def detect_orphan_pages(position_report: dict) -> list:
     """
@@ -202,6 +208,7 @@ def print_orphan_pages(orphans: list, max_display: int = 20) -> None:
 # 4b — Canibalização de keywords
 # ---------------------------------------------------------------------------
 
+
 def detect_cannibalization(query_rows: list) -> list:
     """
     Detecta queries onde 2+ URLs do site REALMENTE competem no Search Console.
@@ -230,9 +237,11 @@ def detect_cannibalization(query_rows: list) -> list:
     result = []
     for query, urls in groups.items():
         competing = [
-            u for u in urls
+            u
+            for u in urls
             if u.get("impressions", 0) >= CANNIBAL_MIN_IMPRESSIONS
-            and u.get("position") and u["position"] <= CANNIBAL_MAX_POSITION
+            and u.get("position")
+            and u["position"] <= CANNIBAL_MAX_POSITION
         ]
         if len(competing) < 2:
             continue
@@ -243,19 +252,21 @@ def detect_cannibalization(query_rows: list) -> list:
         # de tráfego potencial está sendo fragmentado entre páginas concorrentes.
         secondary_impr = sum(u["impressions"] for u in competing[1:])
         if competing[0]["position"] <= 10 and competing[1]["position"] <= 10:
-            severity = "alta"      # 2+ disputando a 1ª página
+            severity = "alta"  # 2+ disputando a 1ª página
         elif competing[1]["position"] <= 20:
             severity = "média"
         else:
             severity = "baixa"
 
-        result.append({
-            "query":          query,
-            "url_count":      len(competing),
-            "urls":           competing,
-            "severity":       severity,
-            "severity_score": secondary_impr,
-        })
+        result.append(
+            {
+                "query": query,
+                "url_count": len(competing),
+                "urls": competing,
+                "severity": severity,
+                "severity_score": secondary_impr,
+            }
+        )
 
     result.sort(key=lambda g: (-g["severity_score"], -g["url_count"]))
     return result
@@ -274,7 +285,7 @@ def print_cannibalization(cannibalization: list, max_display: int = 10) -> None:
 
     for group in cannibalization[:max_display]:
         sev = group.get("severity", "?")
-        print(f"\n  Keyword: \"{group['query']}\"  ({group['url_count']} URLs · severidade {sev})")
+        print(f'\n  Keyword: "{group["query"]}"  ({group["url_count"]} URLs · severidade {sev})')
         for u in group["urls"]:
             pos_str = f"{u['position']:.1f}" if u["position"] else "s/d"
             print(f"    Pos {pos_str:>6}  {u['impressions']:>6} impr.  {u['url']}")

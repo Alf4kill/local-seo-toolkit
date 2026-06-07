@@ -17,7 +17,7 @@ def normalize_domain(site: str) -> str:
     MESMA string.
     """
     if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
+        return site[len("sc-domain:") :]
     return site.removeprefix("https://").removeprefix("http://").rstrip("/")
 
 

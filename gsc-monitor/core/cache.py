@@ -18,14 +18,15 @@ from datetime import datetime, timedelta
 
 from core.storage import _get_domain_dir
 
-CACHE_SUBDIR         = ".cache"
-TTL_INSPECT_HOURS    = 24    # URL Inspection API
-TTL_POSICAO_HOURS    = 72    # Search Analytics API
+CACHE_SUBDIR = ".cache"
+TTL_INSPECT_HOURS = 24  # URL Inspection API
+TTL_POSICAO_HOURS = 72  # Search Analytics API
 
 
 # ---------------------------------------------------------------------------
 # Helpers internos de I/O
 # ---------------------------------------------------------------------------
+
 
 def _cache_dir(site: str) -> str:
     """Retorna (e cria) a pasta de cache do domínio."""
@@ -58,7 +59,7 @@ def _write_entry(path: str, data) -> None:
     """Persiste dados no cache com timestamp de gravação."""
     entry = {
         "cached_at": datetime.now().isoformat(timespec="seconds"),
-        "data":      data,
+        "data": data,
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
@@ -77,12 +78,13 @@ def _is_fresh(entry: dict, max_age_hours: float) -> bool:
 # Cache de posicionamento  (Search Analytics — resposta completa do domínio)
 # ---------------------------------------------------------------------------
 
+
 def get_posicao_cache(site: str, start_date: str, end_date: str) -> dict | None:
     """
     Retorna o dict {url → métricas} cacheado para o período, ou None se
     expirado / inexistente.
     """
-    key   = f"posicao_{start_date}_{end_date}"
+    key = f"posicao_{start_date}_{end_date}"
     entry = _read_entry(_cache_path(site, key))
     if entry is None or not _is_fresh(entry, TTL_POSICAO_HOURS):
         return None
@@ -91,7 +93,7 @@ def get_posicao_cache(site: str, start_date: str, end_date: str) -> dict | None:
 
 def set_posicao_cache(site: str, start_date: str, end_date: str, api_data: dict) -> None:
     """Persiste o api_data (dict URL → métricas) no cache de posicionamento."""
-    key  = f"posicao_{start_date}_{end_date}"
+    key = f"posicao_{start_date}_{end_date}"
     path = _cache_path(site, key)
     _write_entry(path, api_data)
     print(f"[cache] Posicionamento salvo em cache: {os.path.basename(path)}")
@@ -111,12 +113,13 @@ def set_posicao_cache(site: str, start_date: str, end_date: str, api_data: dict)
 # resultados já obtidos.
 # ---------------------------------------------------------------------------
 
+
 def _load_inspect_day(site: str, date_str: str) -> dict | None:
     """
     Carrega o arquivo de cache de inspeção do dia.
     Retorna o dict {url → result} se válido, None se expirado ou inexistente.
     """
-    key   = f"inspect_{date_str}"
+    key = f"inspect_{date_str}"
     entry = _read_entry(_cache_path(site, key))
     if entry is None or not _is_fresh(entry, TTL_INSPECT_HOURS):
         return None
@@ -143,7 +146,7 @@ TTL_QUERY_HOURS = 72  # mesmo TTL que posicionamento
 
 def get_query_cache(site: str, start_date: str, end_date: str) -> "list | None":
     """Retorna a lista cacheada de rows [query×page], ou None se expirado."""
-    key   = f"posicao_queries_{start_date}_{end_date}"
+    key = f"posicao_queries_{start_date}_{end_date}"
     entry = _read_entry(_cache_path(site, key))
     if entry is None or not _is_fresh(entry, TTL_QUERY_HOURS):
         return None
@@ -152,7 +155,7 @@ def get_query_cache(site: str, start_date: str, end_date: str) -> "list | None":
 
 def set_query_cache(site: str, start_date: str, end_date: str, rows: list) -> None:
     """Persiste a lista de rows [query×page] no cache."""
-    key  = f"posicao_queries_{start_date}_{end_date}"
+    key = f"posicao_queries_{start_date}_{end_date}"
     path = _cache_path(site, key)
     _write_entry(path, rows)
     print(f"[cache] Queries salvas em cache: {os.path.basename(path)}")
@@ -163,8 +166,8 @@ def set_inspect_cache(site: str, date_str: str, url: str, result: dict) -> None:
     Persiste o resultado de inspeção de uma URL no cache do dia de forma
     incremental (mantém os resultados já armazenados das outras URLs).
     """
-    key   = f"inspect_{date_str}"
-    path  = _cache_path(site, key)
+    key = f"inspect_{date_str}"
+    path = _cache_path(site, key)
     entry = _read_entry(path)
 
     # Aproveita entradas já existentes mesmo se o arquivo "expirou" — o TTL

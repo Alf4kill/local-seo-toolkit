@@ -70,7 +70,8 @@ def parse_args() -> argparse.Namespace:
         help="Limita o número de URLs inspecionadas (útil para testes).",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Exibe resultado detalhado por URL no terminal.",
     )

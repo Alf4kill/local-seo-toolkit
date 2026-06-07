@@ -13,6 +13,7 @@ Wire it up via .pre-commit-config.yaml, or install as a native git hook:
 
 Exit code 0 = clean, 1 = secret found (commit blocked).
 """
+
 import os
 import re
 import subprocess
@@ -20,22 +21,29 @@ import sys
 
 # Files whose mere presence in a commit is forbidden (real credential files).
 BLOCKED_BASENAMES = {
-    "client_secrets.json", "token.json", "credentials.json",
-    "google_api_key.txt", ".env", "id_rsa",
+    "client_secrets.json",
+    "token.json",
+    "credentials.json",
+    "google_api_key.txt",
+    ".env",
+    "id_rsa",
 }
 BLOCKED_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
 
 # Content patterns that look like real secrets.
 PATTERNS = [
-    ("Google API key",          re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
-    ("Google OAuth token",      re.compile(r"ya29\.[0-9A-Za-z_\-]{20,}")),
-    ("OAuth client_secret",     re.compile(r"\"client_secret\"\s*:\s*\"[A-Za-z0-9_\-]{12,}\"")),
-    ("Private key block",       re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----")),
-    ("GitHub token",            re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[0-9A-Za-z]{30,}\b")),
+    ("Google API key", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
+    ("Google OAuth token", re.compile(r"ya29\.[0-9A-Za-z_\-]{20,}")),
+    ("OAuth client_secret", re.compile(r"\"client_secret\"\s*:\s*\"[A-Za-z0-9_\-]{12,}\"")),
+    (
+        "Private key block",
+        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----"),
+    ),
+    ("GitHub token", re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[0-9A-Za-z]{30,}\b")),
     ("GitHub fine-grained PAT", re.compile(r"\bgithub_pat_[0-9A-Za-z_]{20,}\b")),
-    ("AWS access key id",       re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    ("Slack token",             re.compile(r"\bxox[baprs]-[0-9A-Za-z\-]{10,}\b")),
-    ("Generic sk- key",         re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
+    ("AWS access key id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("Slack token", re.compile(r"\bxox[baprs]-[0-9A-Za-z\-]{10,}\b")),
+    ("Generic sk- key", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
 ]
 
 # Paths excluded from the CONTENT scan: they legitimately contain the patterns
@@ -47,8 +55,20 @@ CONTENT_SKIP = {
 }
 SKIP_SUFFIXES = (".example",)
 BINARY_SUFFIXES = (
-    ".png", ".jpg", ".jpeg", ".gif", ".pdf", ".docx", ".xlsx",
-    ".zip", ".rar", ".npy", ".ico", ".woff", ".woff2", ".ttf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".zip",
+    ".rar",
+    ".npy",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
 )
 
 
@@ -69,11 +89,7 @@ def all_files():
 
 def _skip_content(path):
     p = path.replace("\\", "/")
-    return (
-        p in CONTENT_SKIP
-        or p.endswith(SKIP_SUFFIXES)
-        or p.lower().endswith(BINARY_SUFFIXES)
-    )
+    return p in CONTENT_SKIP or p.endswith(SKIP_SUFFIXES) or p.lower().endswith(BINARY_SUFFIXES)
 
 
 def scan(paths):

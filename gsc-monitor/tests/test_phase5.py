@@ -25,8 +25,8 @@ from reporters.excel_reporter import generate_excel
 # 5a — Knowledge Graph
 # ---------------------------------------------------------------------------
 
-class TestBrandFromDomain(unittest.TestCase):
 
+class TestBrandFromDomain(unittest.TestCase):
     def test_www_prefix(self):
         self.assertEqual(brand_from_domain("www.exemplo.com.br"), "Exemplo")
 
@@ -41,9 +41,9 @@ class TestBrandFromDomain(unittest.TestCase):
 
 
 class TestKGWithoutApiKey(unittest.TestCase):
-
     def test_sem_api_key_retorna_none(self):
         from fetchers.knowledge_graph import search_entity
+
         # Garante que não há API key no ambiente de teste
         with patch.dict(os.environ, {}, clear=False):
             # Remove GOOGLE_API_KEY se existir
@@ -64,9 +64,17 @@ class TestKGWithoutApiKey(unittest.TestCase):
         orig = st.RELATORIOS_DIR
         st.RELATORIOS_DIR = tmp
         try:
-            data = {"found": True, "brand": "Test", "name": "Test Corp",
-                    "types": ["Organization"], "description": "desc",
-                    "detailed_desc": "", "kg_id": "kg:/g/test", "score": 50.0, "url": ""}
+            data = {
+                "found": True,
+                "brand": "Test",
+                "name": "Test Corp",
+                "types": ["Organization"],
+                "description": "desc",
+                "detailed_desc": "",
+                "kg_id": "kg:/g/test",
+                "score": 50.0,
+                "url": "",
+            }
             _write_kg_cache("test.com", data)
             cached = _read_kg_cache("test.com")
             self.assertIsNotNone(cached)
@@ -80,8 +88,8 @@ class TestKGWithoutApiKey(unittest.TestCase):
 # 5b — Trends
 # ---------------------------------------------------------------------------
 
-class TestClassifyTrend(unittest.TestCase):
 
+class TestClassifyTrend(unittest.TestCase):
     def test_crescente(self):
         vals = [20, 22, 21, 25, 28, 30, 35, 38, 40, 42, 45, 48]
         self.assertEqual(_classify_trend(vals), "rising")
@@ -102,15 +110,20 @@ class TestClassifyTrend(unittest.TestCase):
 
 
 class TestTopKeywords(unittest.TestCase):
-
     def _qrow(self, query, position, impressions):
-        return {"query": query, "position": position, "impressions": impressions,
-                "url": "https://ex.com/", "clicks": 1, "ctr": 1.0}
+        return {
+            "query": query,
+            "position": position,
+            "impressions": impressions,
+            "url": "https://ex.com/",
+            "clicks": 1,
+            "ctr": 1.0,
+        }
 
     def test_filtra_top10(self):
         rows = [
             self._qrow("pizza", 5.0, 500),
-            self._qrow("burger", 15.0, 800),   # fora do top 10
+            self._qrow("burger", 15.0, 800),  # fora do top 10
             self._qrow("pasta", 3.0, 300),
         ]
         kws = top_keywords_from_queries(rows)
@@ -141,15 +154,16 @@ class TestTopKeywords(unittest.TestCase):
 # 5c — NLP parsers (sem chamadas à API)
 # ---------------------------------------------------------------------------
 
-class TestNlpParsers(unittest.TestCase):
 
+class TestNlpParsers(unittest.TestCase):
     def test_parse_entities_filtra_skip_types(self):
         from fetchers.nlp_analyzer import _parse_entities
+
         raw = [
-            {"name": "pizza",  "type": "OTHER",  "salience": 0.8},
-            {"name": "10.00",  "type": "NUMBER", "salience": 0.6},
-            {"name": "hoje",   "type": "DATE",   "salience": 0.5},
-            {"name": "R$ 50",  "type": "PRICE",  "salience": 0.4},
+            {"name": "pizza", "type": "OTHER", "salience": 0.8},
+            {"name": "10.00", "type": "NUMBER", "salience": 0.6},
+            {"name": "hoje", "type": "DATE", "salience": 0.5},
+            {"name": "R$ 50", "type": "PRICE", "salience": 0.4},
         ]
         result = _parse_entities(raw)
         self.assertEqual(len(result), 1)
@@ -157,6 +171,7 @@ class TestNlpParsers(unittest.TestCase):
 
     def test_parse_entities_ordena_por_salience(self):
         from fetchers.nlp_analyzer import _parse_entities
+
         raw = [
             {"name": "b", "type": "OTHER", "salience": 0.3},
             {"name": "a", "type": "OTHER", "salience": 0.7},
@@ -168,11 +183,13 @@ class TestNlpParsers(unittest.TestCase):
 
     def test_parse_entities_limita_8(self):
         from fetchers.nlp_analyzer import _parse_entities
+
         raw = [{"name": f"e{i}", "type": "OTHER", "salience": 0.9 - i * 0.05} for i in range(15)]
         self.assertLessEqual(len(_parse_entities(raw)), 8)
 
     def test_parse_categories_ordena_por_confidence(self):
         from fetchers.nlp_analyzer import _parse_categories
+
         raw = [
             {"name": "/Science/Engineering", "confidence": 0.4},
             {"name": "/Business & Industrial", "confidence": 0.9},
@@ -182,11 +199,13 @@ class TestNlpParsers(unittest.TestCase):
 
     def test_parse_categories_limita_3(self):
         from fetchers.nlp_analyzer import _parse_categories
+
         raw = [{"name": f"/Cat{i}", "confidence": 0.9 - i * 0.1} for i in range(6)]
         self.assertLessEqual(len(_parse_categories(raw)), 3)
 
     def test_parse_categories_lista_vazia(self):
         from fetchers.nlp_analyzer import _parse_categories
+
         self.assertEqual(_parse_categories([]), [])
 
 
@@ -194,23 +213,46 @@ class TestNlpParsers(unittest.TestCase):
 # Excel — novos params não quebram generate_excel
 # ---------------------------------------------------------------------------
 
-class TestGenerateExcelPhase5(unittest.TestCase):
 
+class TestGenerateExcelPhase5(unittest.TestCase):
     def _base_data(self):
         rows = [
-            {"url": "https://ex.com/1", "position": 5.0, "clicks": 10,
-             "impressions": 200, "ctr": 5.0, "has_data": True},
-            {"url": "https://ex.com/2", "position": None, "clicks": 0,
-             "impressions": 0, "ctr": 0.0, "has_data": False},
+            {
+                "url": "https://ex.com/1",
+                "position": 5.0,
+                "clicks": 10,
+                "impressions": 200,
+                "ctr": 5.0,
+                "has_data": True,
+            },
+            {
+                "url": "https://ex.com/2",
+                "position": None,
+                "clicks": 0,
+                "impressions": 0,
+                "ctr": 0.0,
+                "has_data": False,
+            },
         ]
-        data = {"start_date": "2026-05-01", "end_date": "2026-05-28",
-                "country": "global", "rows": rows}
+        data = {
+            "start_date": "2026-05-01",
+            "end_date": "2026-05-28",
+            "country": "global",
+            "rows": rows,
+        }
         report = {
-            "site": "ex.com", "date": "2026-05-30",
+            "site": "ex.com",
+            "date": "2026-05-30",
             "period": {"start": "2026-05-01", "end": "2026-05-28", "country": "global"},
-            "summary": {"total_urls_sitemap": 2, "urls_with_data": 1, "urls_no_impressions": 1,
-                        "avg_position_site": 5.0, "total_clicks": 10,
-                        "total_impressions": 200, "avg_ctr_percent": 5.0},
+            "summary": {
+                "total_urls_sitemap": 2,
+                "urls_with_data": 1,
+                "urls_no_impressions": 1,
+                "avg_position_site": 5.0,
+                "total_clicks": 10,
+                "total_impressions": 200,
+                "avg_ctr_percent": 5.0,
+            },
             "urls": rows,
         }
         return data, report
@@ -222,23 +264,43 @@ class TestGenerateExcelPhase5(unittest.TestCase):
 
     def test_com_kg_result(self):
         data, report = self._base_data()
-        kg = {"found": True, "brand": "Ex", "name": "Example Corp",
-              "types": ["Organization"], "description": "Desc", "detailed_desc": "",
-              "kg_id": "kg:/g/x", "score": 80.0, "url": ""}
+        kg = {
+            "found": True,
+            "brand": "Ex",
+            "name": "Example Corp",
+            "types": ["Organization"],
+            "description": "Desc",
+            "detailed_desc": "",
+            "kg_id": "kg:/g/x",
+            "score": 80.0,
+            "url": "",
+        }
         wb = generate_excel("ex.com", "2026-05-30", data, report, kg_result=kg)
         self.assertIsNotNone(wb)
 
     def test_com_trends(self):
         data, report = self._base_data()
         trends = {
-            "pizza delivery": {"trend": "rising", "peak": 80, "latest": 70, "values": list(range(12))},
+            "pizza delivery": {
+                "trend": "rising",
+                "peak": 80,
+                "latest": 70,
+                "values": list(range(12)),
+            },
         }
         query_rows = [
-            {"query": "pizza delivery", "url": "https://ex.com/1",
-             "position": 5.0, "clicks": 5, "impressions": 100, "ctr": 5.0},
+            {
+                "query": "pizza delivery",
+                "url": "https://ex.com/1",
+                "position": 5.0,
+                "clicks": 5,
+                "impressions": 100,
+                "ctr": 5.0,
+            },
         ]
-        wb = generate_excel("ex.com", "2026-05-30", data, report,
-                            trends_data=trends, query_rows=query_rows)
+        wb = generate_excel(
+            "ex.com", "2026-05-30", data, report, trends_data=trends, query_rows=query_rows
+        )
         sheets = [ws.title for ws in wb.worksheets]
         self.assertIn("Trends", sheets)
 
@@ -247,22 +309,20 @@ class TestGenerateExcelPhase5(unittest.TestCase):
         # novo formato: dict com entities + categories
         nlp = {
             "https://ex.com/1": {
-                "entities":   [{"name": "Pizza", "type": "OTHER", "salience": 0.5}],
+                "entities": [{"name": "Pizza", "type": "OTHER", "salience": 0.5}],
                 "categories": [{"name": "/Food & Drink/Pizza", "confidence": 0.92}],
             }
         }
         wb = generate_excel("ex.com", "2026-05-30", data, report, nlp_results=nlp)
         ws_opp = next((ws for ws in wb.worksheets if ws.title == "Oportunidades CTR"), None)
         if ws_opp:
-            self.assertIsNotNone(ws_opp.cell(row=3, column=10).value)   # Entidades
-            self.assertIsNotNone(ws_opp.cell(row=3, column=11).value)   # Categoria NLP
+            self.assertIsNotNone(ws_opp.cell(row=3, column=10).value)  # Entidades
+            self.assertIsNotNone(ws_opp.cell(row=3, column=11).value)  # Categoria NLP
 
     def test_com_nlp_formato_antigo(self):
         """Backward compat: formato lista ainda deve funcionar sem erro."""
         data, report = self._base_data()
-        nlp = {
-            "https://ex.com/1": [{"name": "Pizza", "type": "OTHER", "salience": 0.5}]
-        }
+        nlp = {"https://ex.com/1": [{"name": "Pizza", "type": "OTHER", "salience": 0.5}]}
         wb = generate_excel("ex.com", "2026-05-30", data, report, nlp_results=nlp)
         self.assertIsNotNone(wb)
 

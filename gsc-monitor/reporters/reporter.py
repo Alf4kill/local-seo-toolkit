@@ -71,16 +71,16 @@ def print_consolidated(report: dict) -> None:
 def print_detailed(report: dict) -> None:
     """Imprime relatório detalhado por URL no terminal."""
     STATUS_LABEL = {
-        "indexed":     "  INDEXADO     ",
+        "indexed": "  INDEXADO     ",
         "not_indexed": "  NAO INDEXADO ",
-        "warning":     "  AVISO        ",
-        "unknown":     "  DESCONHECIDO ",
+        "warning": "  AVISO        ",
+        "unknown": "  DESCONHECIDO ",
     }
     STATUS_MARK = {
-        "indexed":     "[+]",
+        "indexed": "[+]",
         "not_indexed": "[X]",
-        "warning":     "[!]",
-        "unknown":     "[?]",
+        "warning": "[!]",
+        "unknown": "[?]",
     }
 
     print("\n" + "=" * 70)

@@ -20,8 +20,8 @@ def expected_ctr(position: float) -> float | None:
     if position is None or position > 10:
         return None
     pos_floor = max(1, min(int(position), 10))
-    pos_ceil  = min(pos_floor + 1, 10)
-    frac      = position - int(position)
-    ctr_low   = CTR_BENCHMARK[pos_floor]
-    ctr_high  = CTR_BENCHMARK.get(pos_ceil, CTR_BENCHMARK[10])
+    pos_ceil = min(pos_floor + 1, 10)
+    frac = position - int(position)
+    ctr_low = CTR_BENCHMARK[pos_floor]
+    ctr_high = CTR_BENCHMARK.get(pos_ceil, CTR_BENCHMARK[10])
     return ctr_low + frac * (ctr_high - ctr_low)

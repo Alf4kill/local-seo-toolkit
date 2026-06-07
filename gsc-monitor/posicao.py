@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
         "--content",
         action="store_true",
         help="Diagnóstico de qualidade de conteúdo (over-optimization / conteúdo raso). "
-             "Sinais locais sem cota; baixa o HTML das páginas de oportunidade. Enriquecido por --nlp.",
+        "Sinais locais sem cota; baixa o HTML das páginas de oportunidade. Enriquecido por --nlp.",
     )
     parser.add_argument(
         "--api-key",
@@ -119,8 +119,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    args   = parse_args()
-    today  = date.today().isoformat()
+    args = parse_args()
+    today = date.today().isoformat()
     domain = normalize_domain(args.site)
 
     print(f"\n=== GSC Posicionamento — {domain} — {today} ===\n")
@@ -179,10 +179,11 @@ def main() -> None:
     # Salva API key se fornecida via --api-key
     if args.api_key:
         from fetchers.knowledge_graph import save_api_key
+
         save_api_key(args.api_key)
 
     # 10. Fase 5a — Knowledge Graph (sempre, se API key disponível)
-    api_key   = args.api_key or load_api_key()
+    api_key = args.api_key or load_api_key()
     kg_result = search_entity(domain, api_key=api_key, use_cache=not args.no_cache)
     print_kg_result(kg_result)
 
@@ -190,6 +191,7 @@ def main() -> None:
     query_rows = None
     if args.queries or args.trends or args.content:
         from fetchers.position_fetcher import fetch_query_positions
+
         try:
             query_rows = fetch_query_positions(service, args.site, use_cache=not args.no_cache)
         except Exception as exc:
@@ -205,6 +207,7 @@ def main() -> None:
     trends_data = None
     if args.trends and query_rows:
         from fetchers.trends_fetcher import fetch_trends, print_trends, top_keywords_from_queries
+
         top_kws = top_keywords_from_queries(query_rows)
         if top_kws:
             trends_data = fetch_trends(top_kws, domain, use_cache=not args.no_cache)
@@ -216,15 +219,23 @@ def main() -> None:
     nlp_results = None
     if args.nlp:
         from fetchers.nlp_analyzer import analyze_opportunity_urls, print_nlp_results
+
         nlp_results = analyze_opportunity_urls(
-            report["urls"], domain, api_key=api_key, use_cache=not args.no_cache,
+            report["urls"],
+            domain,
+            api_key=api_key,
+            use_cache=not args.no_cache,
         )
         print_nlp_results(nlp_results)
 
         # Relatório NLP detalhado — sempre gerado quando --nlp está ativo
         from reporters.nlp_report_generator import generate_nlp_report
+
         nlp_html = generate_nlp_report(
-            domain, today, nlp_results, query_rows=query_rows,
+            domain,
+            today,
+            nlp_results,
+            query_rows=query_rows,
         )
         save_nlp_report(domain, today, nlp_html)
 
@@ -232,9 +243,13 @@ def main() -> None:
     content_results = None
     if args.content:
         from fetchers.content_fetcher import analyze_opportunity_content_quality
+
         content_results = analyze_opportunity_content_quality(
-            report["urls"], domain, query_rows=query_rows,
-            nlp_results=nlp_results, use_cache=not args.no_cache,
+            report["urls"],
+            domain,
+            query_rows=query_rows,
+            nlp_results=nlp_results,
+            use_cache=not args.no_cache,
         )
 
     # 14c. Fase 4c + Move 2 — histórico de posição por URL (com métricas de conteúdo)
@@ -243,6 +258,7 @@ def main() -> None:
 
     # 14d. Move 2 — acompanhamento conteúdo × posição
     from core.content_quality import build_content_tracking, print_content_tracking
+
     tracking = build_content_tracking(historico_posicao)
     print_content_tracking(tracking)
 
@@ -253,13 +269,15 @@ def main() -> None:
     # 16. Gera Excel se solicitado
     if args.excel:
         from reporters.excel_reporter import generate_excel
+
         hist_for_excel = (
-            historico_posicao
-            if len(historico_posicao.get("snapshots", [])) >= 2
-            else None
+            historico_posicao if len(historico_posicao.get("snapshots", [])) >= 2 else None
         )
         wb = generate_excel(
-            domain, today, data, report,
+            domain,
+            today,
+            data,
+            report,
             health=health,
             orphans=orphans if orphans else None,
             historico_posicao=hist_for_excel,
@@ -278,8 +296,12 @@ def main() -> None:
 
     # 18. Dashboard HTML (sempre gerado)
     from reporters.html_reporter import generate_dashboard
+
     html = generate_dashboard(
-        domain, today, data, report,
+        domain,
+        today,
+        data,
+        report,
         health=health,
         orphans=orphans if orphans else None,
         historico_posicao=historico_posicao,

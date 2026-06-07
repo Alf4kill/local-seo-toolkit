@@ -15,9 +15,36 @@ import unicodedata
 
 # Stopwords PT comuns — ignoradas ao comparar o "miolo" das keywords.
 _STOP = {
-    "de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "uns", "umas",
-    "e", "ou", "com", "sem", "para", "pra", "por", "no", "na", "nos", "nas", "em",
-    "que", "se", "ao", "aos", "the",
+    "de",
+    "do",
+    "da",
+    "dos",
+    "das",
+    "o",
+    "a",
+    "os",
+    "as",
+    "um",
+    "uma",
+    "uns",
+    "umas",
+    "e",
+    "ou",
+    "com",
+    "sem",
+    "para",
+    "pra",
+    "por",
+    "no",
+    "na",
+    "nos",
+    "nas",
+    "em",
+    "que",
+    "se",
+    "ao",
+    "aos",
+    "the",
 }
 
 
@@ -40,7 +67,7 @@ def _jaccard(a: frozenset, b: frozenset) -> float:
 
 def _near(ta: frozenset, tb: frozenset, thr: float) -> bool:
     """Quase-iguais: uma é subconjunto da outra, ou alta sobreposição (Jaccard)."""
-    if min(len(ta), len(tb)) < 2:      # keywords de 1 token só colidem por igualdade exata
+    if min(len(ta), len(tb)) < 2:  # keywords de 1 token só colidem por igualdade exata
         return False
     if ta <= tb or tb <= ta:
         return True
@@ -49,16 +76,23 @@ def _near(ta: frozenset, tb: frozenset, thr: float) -> bool:
 
 def _make_collision(group: list, kind: str) -> dict:
     members = sorted(group, key=lambda g: -g["impr"])
-    owner = members[0]                  # quem fica com a keyword = maior tráfego em disputa
+    owner = members[0]  # quem fica com a keyword = maior tráfego em disputa
     return {
-        "kind":       kind,             # "exata" | "parecida"
-        "keyword":    owner["keyword_alvo"],
-        "owner":      {"cluster": owner["cluster"], "slug": owner["slug"]},
-        "members":    [{"cluster": m["cluster"], "slug": m["slug"],
-                        "keyword_alvo": m["keyword_alvo"], "impr": m["impr"]} for m in members],
+        "kind": kind,  # "exata" | "parecida"
+        "keyword": owner["keyword_alvo"],
+        "owner": {"cluster": owner["cluster"], "slug": owner["slug"]},
+        "members": [
+            {
+                "cluster": m["cluster"],
+                "slug": m["slug"],
+                "keyword_alvo": m["keyword_alvo"],
+                "impr": m["impr"],
+            }
+            for m in members
+        ],
         "impr_total": sum(m["impr"] for m in members),
-        "n":          len(members),
-        "cross":      len({m["cluster"] for m in group}) >= 2,
+        "n": len(members),
+        "cross": len({m["cluster"] for m in group}) >= 2,
     }
 
 
@@ -75,11 +109,16 @@ def find_keyword_collisions(diffed: list, fuzzy_threshold: float = 0.7) -> list:
             norm = normalize_kw(kw)
             if not norm:
                 continue
-            items.append({
-                "cluster": ci, "slug": p.get("slug", ""), "keyword_alvo": kw,
-                "norm": norm, "tokens": _content_tokens(norm),
-                "impr": c.get("group_impressions", 0),
-            })
+            items.append(
+                {
+                    "cluster": ci,
+                    "slug": p.get("slug", ""),
+                    "keyword_alvo": kw,
+                    "norm": norm,
+                    "tokens": _content_tokens(norm),
+                    "impr": c.get("group_impressions", 0),
+                }
+            )
 
     collisions = []
     used = set()
@@ -101,7 +140,7 @@ def find_keyword_collisions(diffed: list, fuzzy_threshold: float = 0.7) -> list:
         if ia in used:
             continue
         group = [ia]
-        for ib in rest[a + 1:]:
+        for ib in rest[a + 1 :]:
             if ib in used:
                 continue
             if _near(items[ia]["tokens"], items[ib]["tokens"], fuzzy_threshold):

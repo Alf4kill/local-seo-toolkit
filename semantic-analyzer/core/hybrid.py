@@ -60,17 +60,22 @@ _FEWSHOT = (
 )
 
 _SCHEMA = (
-    '{\n'
+    "{\n"
     '  "verdict": "spun" | "raso" | "ok",\n'
     '  "base_recomendada": "<slug da melhor página para ser a base da consolidação>",\n'
     '  "lacunas": ["o que falta para virar UM artigo completo e útil (específico)", "..."],\n'
     '  "resumo": "1-2 frases explicando o veredito"\n'
-    '}'
+    "}"
 )
 
 
-def build_prompt(cluster: dict, pages: dict, max_chars: int = 1500,
-                 max_pages: int = 6, site_context: "str | None" = None) -> str:
+def build_prompt(
+    cluster: dict,
+    pages: dict,
+    max_chars: int = 1500,
+    max_pages: int = 6,
+    site_context: "str | None" = None,
+) -> str:
     # Usa a ordem do GSC (já por desempenho) quando disponível; senão, os membros.
     members = cluster.get("members_gsc")
     if members:
@@ -86,8 +91,10 @@ def build_prompt(cluster: dict, pages: dict, max_chars: int = 1500,
     parts = []
     if site_context:
         parts.append(f"Contexto do site: {site_context}")
-    parts.append(f"{cluster['size']} página(s) que o agrupador marcou como SIMILARES "
-                 f"(pode haver falso-positivo — avalie pelo conteúdo).\n")
+    parts.append(
+        f"{cluster['size']} página(s) que o agrupador marcou como SIMILARES "
+        f"(pode haver falso-positivo — avalie pelo conteúdo).\n"
+    )
     parts.append(_FEWSHOT)
     parts.append("=== PÁGINAS A AVALIAR ===")
     for i, slug in enumerate(shown, 1):
@@ -100,14 +107,23 @@ def build_prompt(cluster: dict, pages: dict, max_chars: int = 1500,
         txt = (pages.get(slug, "") or "")[:max_chars]
         parts.append(f"\n--- PÁGINA {i} (slug: {slug}){gsc} ---\n{txt}")
     if extra > 0:
-        parts.append(f"\n(+{extra} página(s) quase idêntica(s) com sinais semelhantes, omitidas para encurtar.)")
+        parts.append(
+            f"\n(+{extra} página(s) quase idêntica(s) com sinais semelhantes, omitidas para encurtar.)"
+        )
     parts.append("\nResponda com APENAS este JSON:\n" + _SCHEMA)
     return "\n".join(parts)
 
 
-def judge_clusters(clusters: list, pages: dict, client,
-                   max_clusters: int = 8, min_size: int = 2, max_chars: int = 1500,
-                   max_pages: int = 6, site_context: "str | None" = None) -> list:
+def judge_clusters(
+    clusters: list,
+    pages: dict,
+    client,
+    max_clusters: int = 8,
+    min_size: int = 2,
+    max_chars: int = 1500,
+    max_pages: int = 6,
+    site_context: "str | None" = None,
+) -> list:
     """
     Julga os maiores grupos de duplicação com o LLM. Prioriza por impressões em
     disputa (se houver cruzamento GSC), senão por tamanho. Anexa c["llm"] a cada
@@ -121,11 +137,11 @@ def judge_clusters(clusters: list, pages: dict, client,
         raw = client.chat(SYSTEM, build_prompt(c, pages, max_chars, max_pages, site_context))
         v = parse_json_block(raw)
         c["llm"] = {
-            "verdict":          v.get("verdict", "?"),
+            "verdict": v.get("verdict", "?"),
             "base_recomendada": v.get("base_recomendada", ""),
-            "lacunas":          v.get("lacunas", []) if isinstance(v.get("lacunas"), list) else [],
-            "resumo":           v.get("resumo", "") or (raw[:200] if not v else ""),
-            "raw_ok":           bool(v),
+            "lacunas": v.get("lacunas", []) if isinstance(v.get("lacunas"), list) else [],
+            "resumo": v.get("resumo", "") or (raw[:200] if not v else ""),
+            "raw_ok": bool(v),
         }
         judged.append(c)
     return judged
@@ -174,24 +190,29 @@ _DIFF_FEWSHOT = (
 )
 
 _DIFF_SCHEMA = (
-    '{\n'
+    "{\n"
     '  "cabeca": "<slug da página hub para o termo principal>",\n'
     '  "paginas": [\n'
-    '    {\n'
+    "    {\n"
     '      "slug": "<slug exatamente como dado>",\n'
     '      "papel": "cabeca" | "spoke" | "duplicado_real",\n'
     '      "intencao": "<a intenção de busca distinta que esta página passa a atender>",\n'
     '      "keyword_alvo": "<keyword única desta página>",\n'
     '      "titulo": "<title tag sugerido>",\n'
     '      "foco": "<o que mudar no conteúdo p/ atender a intenção e parar de competir>"\n'
-    '    }\n'
-    '  ]\n'
-    '}'
+    "    }\n"
+    "  ]\n"
+    "}"
 )
 
 
-def build_diff_prompt(cluster: dict, pages: dict, max_chars: int = 1200,
-                      max_pages: int = 6, site_context: "str | None" = None) -> str:
+def build_diff_prompt(
+    cluster: dict,
+    pages: dict,
+    max_chars: int = 1200,
+    max_pages: int = 6,
+    site_context: "str | None" = None,
+) -> str:
     members = cluster.get("members_gsc")
     if members:
         ordered = [m["slug"] for m in members]
@@ -206,8 +227,10 @@ def build_diff_prompt(cluster: dict, pages: dict, max_chars: int = 1200,
     parts = []
     if site_context:
         parts.append(f"Contexto do site: {site_context}")
-    parts.append(f"{len(ordered)} página(s) que hoje COMPETEM pela mesma intenção (canibalização). "
-                 f"Diferencie-as — mantenha TODAS, sem apagar nem redirecionar.\n")
+    parts.append(
+        f"{len(ordered)} página(s) que hoje COMPETEM pela mesma intenção (canibalização). "
+        f"Diferencie-as — mantenha TODAS, sem apagar nem redirecionar.\n"
+    )
     if shown:
         parts.append(f"Melhor desempenho no GSC (sugestão de CABEÇA): {shown[0]}\n")
     parts.append(_DIFF_FEWSHOT)
@@ -222,15 +245,26 @@ def build_diff_prompt(cluster: dict, pages: dict, max_chars: int = 1200,
         txt = (pages.get(slug, "") or "")[:max_chars]
         parts.append(f"\n--- PÁGINA {i} (slug: {slug}){gsc} ---\n{txt}")
     if extra:
-        parts.append(f"\n(+{len(extra)} página(s) quase idêntica(s) omitidas; se não houver intenção "
-                     f"distinta para elas, são candidatas a rel=canonical.)")
-    parts.append("\nDê um plano para CADA página mostrada. Responda com APENAS este JSON:\n" + _DIFF_SCHEMA)
+        parts.append(
+            f"\n(+{len(extra)} página(s) quase idêntica(s) omitidas; se não houver intenção "
+            f"distinta para elas, são candidatas a rel=canonical.)"
+        )
+    parts.append(
+        "\nDê um plano para CADA página mostrada. Responda com APENAS este JSON:\n" + _DIFF_SCHEMA
+    )
     return "\n".join(parts)
 
 
-def differentiate_clusters(clusters: list, pages: dict, client,
-                           max_clusters: int = 8, min_size: int = 2, max_chars: int = 1200,
-                           max_pages: int = 6, site_context: "str | None" = None) -> list:
+def differentiate_clusters(
+    clusters: list,
+    pages: dict,
+    client,
+    max_clusters: int = 8,
+    min_size: int = 2,
+    max_chars: int = 1200,
+    max_pages: int = 6,
+    site_context: "str | None" = None,
+) -> list:
     """
     Para cada grupo de canibalização, pede ao LLM um plano de DIFERENCIAÇÃO: uma
     intenção/keyword/título distintos por página (mantém TODAS — sem 301). Prioriza
@@ -247,29 +281,33 @@ def differentiate_clusters(clusters: list, pages: dict, client,
 
         # max_tokens generoso: o 14B é verboso e grupos de várias páginas geram
         # JSON longo — com 1200 o JSON truncava no meio (parse falhava). 2200 dá folga.
-        raw = client.chat(DIFF_SYSTEM,
-                          build_diff_prompt(c, pages, max_chars, max_pages, site_context),
-                          max_tokens=2200)
+        raw = client.chat(
+            DIFF_SYSTEM,
+            build_diff_prompt(c, pages, max_chars, max_pages, site_context),
+            max_tokens=2200,
+        )
         v = parse_json_block(raw)
         paginas_raw = v.get("paginas") if isinstance(v.get("paginas"), list) else []
         paginas = []
         for p in paginas_raw:
             if not isinstance(p, dict):
                 continue
-            paginas.append({
-                "slug":         p.get("slug", ""),
-                "papel":        p.get("papel", "spoke"),
-                "intencao":     p.get("intencao", ""),
-                "keyword_alvo": p.get("keyword_alvo", ""),
-                "titulo":       p.get("titulo", ""),
-                "foco":         p.get("foco", ""),
-            })
+            paginas.append(
+                {
+                    "slug": p.get("slug", ""),
+                    "papel": p.get("papel", "spoke"),
+                    "intencao": p.get("intencao", ""),
+                    "keyword_alvo": p.get("keyword_alvo", ""),
+                    "titulo": p.get("titulo", ""),
+                    "foco": p.get("foco", ""),
+                }
+            )
         c["diff"] = {
-            "cabeca":   v.get("cabeca", "") or (ordered[0] if ordered else ""),
-            "paginas":  paginas,
+            "cabeca": v.get("cabeca", "") or (ordered[0] if ordered else ""),
+            "paginas": paginas,
             "omitidas": extra,
-            "raw_ok":   bool(paginas),
-            "resumo":   "" if paginas else (raw[:200] if not v else ""),
+            "raw_ok": bool(paginas),
+            "resumo": "" if paginas else (raw[:200] if not v else ""),
         }
         out.append(c)
     return out

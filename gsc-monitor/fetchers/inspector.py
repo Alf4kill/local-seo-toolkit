@@ -40,14 +40,13 @@ def inspect_urls(
     """
     from core.cache import get_inspect_cache, set_inspect_cache
 
-    site_url   = build_site_url(domain)
+    site_url = build_site_url(domain)
     cache_site = normalize_domain(domain)
-    today_str  = date.today().isoformat()
-    results    = []
-    total      = len(urls)
+    today_str = date.today().isoformat()
+    results = []
+    total = len(urls)
 
     for idx, url in enumerate(urls, start=1):
-
         # ── Tentativa de cache hit ──────────────────────────────────────────
         if use_cache:
             cached = get_inspect_cache(cache_site, today_str, url)
@@ -66,39 +65,36 @@ def inspect_urls(
                 .inspect(
                     body={
                         "inspectionUrl": url,
-                        "siteUrl":       site_url,
+                        "siteUrl": site_url,
                     }
                 )
                 .execute()
             )
 
-            index_result  = (
-                response.get("inspectionResult", {})
-                .get("indexStatusResult", {})
-            )
-            verdict        = index_result.get("verdict",       "VERDICT_UNSPECIFIED")
+            index_result = response.get("inspectionResult", {}).get("indexStatusResult", {})
+            verdict = index_result.get("verdict", "VERDICT_UNSPECIFIED")
             coverage_state = index_result.get("coverageState", "")
-            last_crawl     = index_result.get("lastCrawlTime", "")
-            api_error      = False
+            last_crawl = index_result.get("lastCrawlTime", "")
+            api_error = False
 
         except HttpError as exc:
             print(f"[inspector] ERRO HTTP em {url}: {exc.status_code} — {exc.reason}")
-            verdict        = "VERDICT_UNSPECIFIED"
+            verdict = "VERDICT_UNSPECIFIED"
             coverage_state = f"http_error_{exc.status_code}"
-            last_crawl     = ""
-            api_error      = True
+            last_crawl = ""
+            api_error = True
 
         except Exception as exc:  # noqa: BLE001
             print(f"[inspector] ERRO inesperado em {url}: {exc}")
-            verdict        = "VERDICT_UNSPECIFIED"
+            verdict = "VERDICT_UNSPECIFIED"
             coverage_state = "fetch_error"
-            last_crawl     = ""
-            api_error      = True
+            last_crawl = ""
+            api_error = True
 
         result = {
-            "url":           url,
-            "verdict":       verdict,
-            "category":      classify(verdict),
+            "url": url,
+            "verdict": verdict,
+            "category": classify(verdict),
             "coverageState": coverage_state,
             "lastCrawlTime": last_crawl,
         }

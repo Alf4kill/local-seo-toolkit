@@ -18,13 +18,14 @@ from datetime import datetime, timedelta
 import requests
 from config import BASE_DIR
 
-KG_API_URL   = "https://kgsearch.googleapis.com/v1/entities:search"
-TTL_KG_HOURS = 168   # 7 dias — entidades mudam raramente
+KG_API_URL = "https://kgsearch.googleapis.com/v1/entities:search"
+TTL_KG_HOURS = 168  # 7 dias — entidades mudam raramente
 
 
 # ---------------------------------------------------------------------------
 # API key
 # ---------------------------------------------------------------------------
+
 
 def load_api_key() -> "str | None":
     """Carrega a API key de: env var GOOGLE_API_KEY → arquivo google_api_key.txt."""
@@ -51,6 +52,7 @@ def save_api_key(key: str) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def brand_from_domain(domain: str) -> str:
     """Extrai o nome da marca (ex: www.exemplo.com.br → Exemplo)."""
@@ -93,10 +95,8 @@ def _is_plausible_match(brand: str, entity_name: str, entity_url: str, domain: s
     if entity_url:
         try:
             from urllib.parse import urlparse
-            ent_first = (
-                urlparse(entity_url).netloc
-                .lower().removeprefix("www.").split(".")[0]
-            )
+
+            ent_first = urlparse(entity_url).netloc.lower().removeprefix("www.").split(".")[0]
             dom_first = domain.lower().removeprefix("www.").split(".")[0]
             if ent_first == dom_first:
                 return True
@@ -108,6 +108,7 @@ def _is_plausible_match(brand: str, entity_name: str, entity_url: str, domain: s
 
 def _kg_cache_path(domain: str) -> str:
     from core.cache import _cache_dir
+
     # Usa o domínio completo (ex: "www.exemplo.com") para alinhar
     # com os demais caches do domínio (relatorios/{domain}/.cache/)
     return os.path.join(_cache_dir(domain), "knowledge_graph.json")
@@ -134,7 +135,9 @@ def _write_kg_cache(domain: str, data: dict) -> None:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
                 {"cached_at": datetime.now().isoformat(timespec="seconds"), "data": data},
-                f, ensure_ascii=False, indent=2,
+                f,
+                ensure_ascii=False,
+                indent=2,
             )
     except OSError:
         pass
@@ -143,6 +146,7 @@ def _write_kg_cache(domain: str, data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Consulta principal
 # ---------------------------------------------------------------------------
+
 
 def search_entity(
     domain: str,
@@ -206,17 +210,19 @@ def search_entity(
             _write_kg_cache(domain, {"found": False, "brand": brand})
         return None
 
-    best        = max(items, key=lambda x: x.get("resultScore", 0))
-    entity      = best.get("result", {})
+    best = max(items, key=lambda x: x.get("resultScore", 0))
+    entity = best.get("result", {})
     entity_name = entity.get("name", brand)
-    entity_url  = entity.get("url", "")
+    entity_url = entity.get("url", "")
 
     # Valida se o resultado realmente corresponde à marca buscada.
     # Marcas curtas/ambíguas (ex: "Pix") podem retornar entidades globais
     # famosas (ex: "Pixiv") com score altíssimo mas sem relação com o domínio.
     if not _is_plausible_match(brand, entity_name, entity_url, domain):
-        print(f"[knowledge_graph] '{brand}' → resultado '{entity_name}' descartado "
-              f"(falso positivo detectado — entidade não corresponde ao domínio).")
+        print(
+            f"[knowledge_graph] '{brand}' → resultado '{entity_name}' descartado "
+            f"(falso positivo detectado — entidade não corresponde ao domínio)."
+        )
         print("[knowledge_graph] Dica: Google Business Profile e Schema.org (Organization)")
         print("[knowledge_graph]       são os principais caminhos para aparecer no KG.")
         if use_cache:
@@ -224,15 +230,15 @@ def search_entity(
         return None
 
     result = {
-        "found":        True,
-        "brand":        brand,
-        "name":         entity_name,
-        "types":        entity.get("@type", []),
-        "description":  entity.get("description", ""),
+        "found": True,
+        "brand": brand,
+        "name": entity_name,
+        "types": entity.get("@type", []),
+        "description": entity.get("description", ""),
         "detailed_desc": entity.get("detailedDescription", {}).get("articleBody", ""),
-        "kg_id":        entity.get("@id", ""),
-        "score":        round(best.get("resultScore", 0), 1),
-        "url":          entity_url,
+        "kg_id": entity.get("@id", ""),
+        "score": round(best.get("resultScore", 0), 1),
+        "url": entity_url,
     }
     if use_cache:
         _write_kg_cache(domain, result)

@@ -36,17 +36,34 @@ from core.loaders import slugify
 # Âncoras genéricas que legitimamente apontam p/ muitos lugares — NÃO são
 # canibalização de âncora (são, no máximo, um problema separado de "âncora pobre").
 _GENERIC_ANCHORS = {
-    "clique aqui", "clique", "aqui", "saiba mais", "saiba", "leia mais", "leia",
-    "veja mais", "veja", "ver mais", "ver", "mais", "continue lendo", "confira",
-    "link", "este link", "acesse", "acesse aqui", "voltar", "home", "pagina inicial",
+    "clique aqui",
+    "clique",
+    "aqui",
+    "saiba mais",
+    "saiba",
+    "leia mais",
+    "leia",
+    "veja mais",
+    "veja",
+    "ver mais",
+    "ver",
+    "mais",
+    "continue lendo",
+    "confira",
+    "link",
+    "este link",
+    "acesse",
+    "acesse aqui",
+    "voltar",
+    "home",
+    "pagina inicial",
 }
 
 _A_TAG = re.compile(r"<a\b([^>]*?)>(.*?)</a>", re.IGNORECASE | re.DOTALL)
 _HREF = re.compile(r"""href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
 _PHP = re.compile(r"<\?.*?\?>", re.DOTALL)
-_SCRIPT_STYLE = re.compile(r"<(script|style)[^>]*>.*?</(script|style)>",
-                           re.DOTALL | re.IGNORECASE)
+_SCRIPT_STYLE = re.compile(r"<(script|style)[^>]*>.*?</(script|style)>", re.DOTALL | re.IGNORECASE)
 _SCHEME_HOST = re.compile(r"^[a-z][a-z0-9+.\-]*://[^/]+", re.IGNORECASE)
 _EXT = re.compile(r"\.(php\d?|html?|aspx?|jsp|cgi)$", re.IGNORECASE)
 
@@ -93,10 +110,10 @@ def normalize_href(href: str) -> "str | None":
     low = h.lower()
     if not h or low.startswith(("mailto:", "tel:", "javascript:", "data:", "#", "//")):
         return None
-    h = h.split("#", 1)[0].split("?", 1)[0]      # tira fragmento e query
-    h = _SCHEME_HOST.sub("", h).strip("/")       # tira esquema+host
+    h = h.split("#", 1)[0].split("?", 1)[0]  # tira fragmento e query
+    h = _SCHEME_HOST.sub("", h).strip("/")  # tira esquema+host
     if not h:
-        return None                              # era a home ("/" ou "https://host/")
+        return None  # era a home ("/" ou "https://host/")
     seg = h.split("/")[-1]
     seg = _EXT.sub("", seg).lower()
     return seg or None
@@ -139,13 +156,20 @@ def build_link_graph(sources: dict, known: "set | None" = None) -> dict:
             if na:
                 tcount = anchor_index.setdefault(na, {})
                 tcount[dst] = tcount.get(dst, 0) + 1
-    return {"out": out, "in": inn, "edges": edges,
-            "anchor_index": anchor_index, "known": known, "sources": set(sources)}
+    return {
+        "out": out,
+        "in": inn,
+        "edges": edges,
+        "anchor_index": anchor_index,
+        "known": known,
+        "sources": set(sources),
+    }
 
 
 # ---------------------------------------------------------------------------
 # Diagnósticos (puros, sobre o grafo + GSC opcional)
 # ---------------------------------------------------------------------------
+
 
 def find_orphans(graph: dict, targets: "set | None" = None) -> list:
     """Páginas (entre `targets`, padrão `known`) que NENHUMA outra linka."""
@@ -154,30 +178,29 @@ def find_orphans(graph: dict, targets: "set | None" = None) -> list:
     return sorted(t for t in targets if not inn.get(t))
 
 
-def inlink_report(graph: dict, targets: "set | None" = None,
-                  gsc: "dict | None" = None) -> list:
+def inlink_report(graph: dict, targets: "set | None" = None, gsc: "dict | None" = None) -> list:
     """Linha por página: nº de links de entrada/saída + métricas GSC (se houver)."""
     targets = sorted(targets) if targets is not None else sorted(graph["known"])
     gsc = gsc or {}
     rows = []
     for t in targets:
         g = gsc.get(t) or {}
-        rows.append({
-            "slug":        t,
-            "inlinks":     len(graph["in"].get(t, {})),
-            "outlinks":    len(graph["out"].get(t, {})),
-            "impressions": g.get("impressions", 0),
-            "clicks":      g.get("clicks", 0),
-            "position":    g.get("position"),
-        })
+        rows.append(
+            {
+                "slug": t,
+                "inlinks": len(graph["in"].get(t, {})),
+                "outlinks": len(graph["out"].get(t, {})),
+                "impressions": g.get("impressions", 0),
+                "clicks": g.get("clicks", 0),
+                "position": g.get("position"),
+            }
+        )
     return rows
 
 
-def underlinked_money_pages(rows: list, max_inlinks: int = 1,
-                            min_impressions: int = 1) -> list:
+def underlinked_money_pages(rows: list, max_inlinks: int = 1, min_impressions: int = 1) -> list:
     """Páginas com tráfego real (GSC) mas <= max_inlinks links internos de entrada."""
-    pages = [r for r in rows
-             if r["inlinks"] <= max_inlinks and r["impressions"] >= min_impressions]
+    pages = [r for r in rows if r["inlinks"] <= max_inlinks and r["impressions"] >= min_impressions]
     pages.sort(key=lambda r: (-r["impressions"], r["inlinks"]))
     return pages
 
@@ -241,8 +264,9 @@ def detect_array_emitters(php_source: str, array_names: set) -> list:
     """
     if not php_source or "formatStringToURL" not in php_source:
         return []
-    alias = {m.group(1): m.group(2) for m in _ALIAS.finditer(php_source)
-             if m.group(2) in array_names}
+    alias = {
+        m.group(1): m.group(2) for m in _ALIAS.finditer(php_source) if m.group(2) in array_names
+    }
 
     def real(v):
         return v if v in array_names else alias.get(v)
@@ -253,7 +277,7 @@ def detect_array_emitters(php_source: str, array_names: set) -> list:
         if not arr:
             continue
         sliced = bool(re.search(r"array_slice\s*\(\s*\$" + re.escape(m.group(1)), php_source))
-        emit[arr] = "widget" if sliced else "index"           # index = array inteiro
+        emit[arr] = "widget" if sliced else "index"  # index = array inteiro
     for m in _ARRAY_RAND.finditer(php_source):
         arr = real(m.group(1))
         if arr:
@@ -281,8 +305,9 @@ def _emitters_for_page(markup: str, base_path: str, array_names: set, cache: dic
     return emit
 
 
-def build_template_inbound(sources: dict, base_path: str, arrays: dict,
-                           known: "set | None" = None) -> dict:
+def build_template_inbound(
+    sources: dict, base_path: str, arrays: dict, known: "set | None" = None
+) -> dict:
     """
     {dst: set(tipos)} dos links de array/template (tipos: 'index', 'widget').
     `sources` = {slug: markup}; `arrays` = {nome: set(slugs)} de parse_primeweb_arrays.
@@ -319,6 +344,7 @@ def classify_pages(targets, graph: dict, template_inbound: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Plano de links por grupo (completa o --differentiate: hub-and-spoke)
 # ---------------------------------------------------------------------------
+
 
 def _hub_and_spokes(c: dict):
     """(hub, keyword_da_cabeça, [(spoke_slug, keyword), ...]) a partir do cluster.
@@ -360,13 +386,13 @@ def cluster_link_plan(clusters: list, graph: dict, min_size: int = 2) -> list:
             if not hub_out.get(slug):
                 missing_down.append(slug)
         plan = {
-            "hub":                  hub,
-            "hub_keyword":          hub_kw,
-            "spokes_total":         len(spokes),
+            "hub": hub,
+            "hub_keyword": hub_kw,
+            "spokes_total": len(spokes),
             "missing_spoke_to_hub": missing_up,
-            "have_spoke_to_hub":    have_up,
+            "have_spoke_to_hub": have_up,
             "missing_hub_to_spoke": missing_down,
-            "complete":             not missing_up and not missing_down,
+            "complete": not missing_up and not missing_down,
         }
         c["link_plan"] = plan
         out.append(c)

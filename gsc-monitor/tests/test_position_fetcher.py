@@ -14,7 +14,6 @@ from fetchers.position_fetcher import _build_date_range
 
 
 class TestBuildSiteUrl:
-
     def test_dominio_simples_vira_https_com_barra(self):
         assert build_site_url("exemplo.com.br") == "https://exemplo.com.br/"
 
@@ -30,7 +29,6 @@ class TestBuildSiteUrl:
 
 
 class TestNormalizeDomain:
-
     def test_remove_sc_domain(self):
         assert normalize_domain("sc-domain:exemplo.com.br") == "exemplo.com.br"
 
@@ -45,12 +43,12 @@ class TestNormalizeDomain:
 
     def test_site_url_e_sc_domain_geram_mesma_chave(self):
         # Importante p/ cache: as duas formas do mesmo site devem coincidir.
-        assert normalize_domain("https://exemplo.com.br/") == \
-               normalize_domain("sc-domain:exemplo.com.br")
+        assert normalize_domain("https://exemplo.com.br/") == normalize_domain(
+            "sc-domain:exemplo.com.br"
+        )
 
 
 class TestBuildDateRange:
-
     def test_end_e_hoje_menos_3_dias(self):
         start, end = _build_date_range(days_back=30)
         assert end == (date.today() - timedelta(days=3)).isoformat()

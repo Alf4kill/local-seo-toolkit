@@ -36,17 +36,11 @@ def _parse_sitemap(content: str) -> list[str]:
 
     if "sitemapindex" in tag:
         sitemap_urls = [
-            loc.text.strip()
-            for loc in root.findall(f".//{{{SITEMAP_NS}}}loc")
-            if loc.text
+            loc.text.strip() for loc in root.findall(f".//{{{SITEMAP_NS}}}loc") if loc.text
         ]
         return [], sitemap_urls
 
-    page_urls = [
-        loc.text.strip()
-        for loc in root.findall(f".//{{{SITEMAP_NS}}}loc")
-        if loc.text
-    ]
+    page_urls = [loc.text.strip() for loc in root.findall(f".//{{{SITEMAP_NS}}}loc") if loc.text]
     return page_urls, []
 
 

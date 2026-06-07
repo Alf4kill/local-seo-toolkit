@@ -22,7 +22,7 @@ from core.storage import (
 )
 
 DOMAIN = "www.exemplo.com.br"
-DATE   = "2026-05-30"
+DATE = "2026-05-30"
 
 # ---------------------------------------------------------------------------
 # Dados fake para os testes
@@ -32,16 +32,16 @@ FAKE_DETAILED = {
     "date": DATE,
     "urls": [
         {
-            "url":           "https://www.exemplo.com.br/",
-            "category":      "indexed",
-            "verdict":       "PASS",
+            "url": "https://www.exemplo.com.br/",
+            "category": "indexed",
+            "verdict": "PASS",
             "coverageState": "Submitted and indexed",
             "lastCrawlTime": "2026-05-28T10:00:00Z",
         },
         {
-            "url":           "https://www.exemplo.com.br/contato",
-            "category":      "not_indexed",
-            "verdict":       "FAIL",
+            "url": "https://www.exemplo.com.br/contato",
+            "category": "not_indexed",
+            "verdict": "FAIL",
             "coverageState": "Crawled - currently not indexed",
             "lastCrawlTime": "2026-05-20T08:00:00Z",
         },
@@ -49,14 +49,14 @@ FAKE_DETAILED = {
 }
 
 FAKE_CONSOLIDATED = {
-    "site":       DOMAIN,
-    "date":       DATE,
+    "site": DOMAIN,
+    "date": DATE,
     "total_urls": 2,
     "summary": {
-        "indexed":     {"total": 1, "percent": 50.0},
+        "indexed": {"total": 1, "percent": 50.0},
         "not_indexed": {"total": 1, "percent": 50.0},
-        "warning":     {"total": 0, "percent": 0.0},
-        "unknown":     {"total": 0, "percent": 0.0},
+        "warning": {"total": 0, "percent": 0.0},
+        "unknown": {"total": 0, "percent": 0.0},
     },
 }
 
@@ -64,8 +64,22 @@ FAKE_POSITION_REPORT = {
     "site": DOMAIN,
     "date": DATE,
     "urls": [
-        {"url": "https://www.exemplo.com.br/",       "position": 3.2,  "clicks": 120, "impressions": 1500, "ctr": 8.0,  "has_data": True},
-        {"url": "https://www.exemplo.com.br/contato", "position": None, "clicks": 0,   "impressions": 0,    "ctr": 0.0,  "has_data": False},
+        {
+            "url": "https://www.exemplo.com.br/",
+            "position": 3.2,
+            "clicks": 120,
+            "impressions": 1500,
+            "ctr": 8.0,
+            "has_data": True,
+        },
+        {
+            "url": "https://www.exemplo.com.br/contato",
+            "position": None,
+            "clicks": 0,
+            "impressions": 0,
+            "ctr": 0.0,
+            "has_data": False,
+        },
     ],
 }
 
@@ -94,11 +108,11 @@ def test_pasta_por_dominio():
 def test_caminhos():
     print("\n--- Teste: geração de caminhos ---")
     p = _report_path(DOMAIN, DATE, "posicao", "json")
-    check(p.endswith(f"{DATE}_posicao.json"),           "Sufixo JSON posição correto")
-    check(_safe_filename(DOMAIN) in p,                  "Pasta do domínio no caminho")
+    check(p.endswith(f"{DATE}_posicao.json"), "Sufixo JSON posição correto")
+    check(_safe_filename(DOMAIN) in p, "Pasta do domínio no caminho")
 
     p2 = _report_path(DOMAIN, DATE, "indexacao", "csv")
-    check(p2.endswith(f"{DATE}_indexacao.csv"),         "Sufixo CSV indexação correto")
+    check(p2.endswith(f"{DATE}_indexacao.csv"), "Sufixo CSV indexação correto")
 
 
 def test_save_indexacao_json():
@@ -117,10 +131,12 @@ def test_save_csv_indexacao():
     check(os.path.isfile(path), f"Arquivo CSV criado: {path}")
     with open(path, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
-    check(rows[0] == ["URL", "Categoria", "Verdict", "Estado de Cobertura", "Ultimo Rastreamento"],
-          "Cabeçalho CSV de indexação correto")
+    check(
+        rows[0] == ["URL", "Categoria", "Verdict", "Estado de Cobertura", "Ultimo Rastreamento"],
+        "Cabeçalho CSV de indexação correto",
+    )
     check(len(rows) == 3, "2 linhas de dados + 1 cabeçalho")
-    check(rows[1][1] == "indexed",     "Categoria da 1ª URL correta")
+    check(rows[1][1] == "indexed", "Categoria da 1ª URL correta")
     check(rows[2][1] == "not_indexed", "Categoria da 2ª URL correta")
 
 
@@ -130,12 +146,14 @@ def test_save_csv_posicao():
     check(os.path.isfile(path), f"Arquivo CSV criado: {path}")
     with open(path, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
-    check(rows[0] == ["URL", "Posicao", "Cliques", "Impressoes", "CTR(%)", "Com Dados"],
-          "Cabeçalho CSV de posição correto")
-    check(len(rows) == 3,          "2 linhas de dados + 1 cabeçalho")
-    check(rows[1][5] == "Sim",     "URL com dados marcada como Sim")
-    check(rows[2][5] == "Nao",     "URL sem dados marcada como Nao")
-    check(rows[2][1] == "",        "Posição vazia para URL sem dados")
+    check(
+        rows[0] == ["URL", "Posicao", "Cliques", "Impressoes", "CTR(%)", "Com Dados"],
+        "Cabeçalho CSV de posição correto",
+    )
+    check(len(rows) == 3, "2 linhas de dados + 1 cabeçalho")
+    check(rows[1][5] == "Sim", "URL com dados marcada como Sim")
+    check(rows[2][5] == "Nao", "URL sem dados marcada como Nao")
+    check(rows[2][1] == "", "Posição vazia para URL sem dados")
 
 
 def test_sem_colisao_dominio():

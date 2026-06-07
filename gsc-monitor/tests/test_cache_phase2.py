@@ -35,24 +35,30 @@ from core.cache import (
     set_posicao_cache,
 )
 
-DOMAIN    = "www.cache-test.com.br"
-TODAY     = "2026-05-30"
-START     = "2026-04-27"
-END       = "2026-05-27"
+DOMAIN = "www.cache-test.com.br"
+TODAY = "2026-05-30"
+START = "2026-04-27"
+END = "2026-05-27"
 
 FAKE_API_DATA = {
     "https://www.cache-test.com.br/": {
-        "clicks": 100, "impressions": 2000, "ctr": 5.0, "position": 3.2,
+        "clicks": 100,
+        "impressions": 2000,
+        "ctr": 5.0,
+        "position": 3.2,
     },
     "https://www.cache-test.com.br/contato": {
-        "clicks": 10,  "impressions": 500,  "ctr": 2.0, "position": 8.5,
+        "clicks": 10,
+        "impressions": 500,
+        "ctr": 2.0,
+        "position": 8.5,
     },
 }
 
 FAKE_INSPECT_RESULT = {
-    "url":           "https://www.cache-test.com.br/",
-    "verdict":       "PASS",
-    "category":      "indexed",
+    "url": "https://www.cache-test.com.br/",
+    "verdict": "PASS",
+    "category": "indexed",
     "coverageState": "Submitted and indexed",
     "lastCrawlTime": "2026-05-28T10:00:00Z",
 }
@@ -131,16 +137,16 @@ def test_inspect_set_get():
     result = get_inspect_cache(DOMAIN, TODAY, url)
     check(result is not None, "get retorna dados após set")
     check(result["category"] == "indexed", "Categoria correta no cache")
-    check(result["verdict"]  == "PASS",    "Verdict correto no cache")
+    check(result["verdict"] == "PASS", "Verdict correto no cache")
 
 
 def test_inspect_incremental():
     print("\n--- Teste 5: atualização incremental (múltiplas URLs) ---")
     url2 = "https://www.cache-test.com.br/contato"
     result2 = {
-        "url":           url2,
-        "verdict":       "FAIL",
-        "category":      "not_indexed",
+        "url": url2,
+        "verdict": "FAIL",
+        "category": "not_indexed",
         "coverageState": "Crawled - currently not indexed",
         "lastCrawlTime": "",
     }
@@ -152,11 +158,11 @@ def test_inspect_incremental():
         entry = json.load(f)
 
     check(FAKE_INSPECT_RESULT["url"] in entry["data"], "URL 1 preservada após inserção de URL 2")
-    check(url2 in entry["data"],                       "URL 2 inserida corretamente")
-    check(len(entry["data"]) == 2,                     "Total de 2 URLs no arquivo")
+    check(url2 in entry["data"], "URL 2 inserida corretamente")
+    check(len(entry["data"]) == 2, "Total de 2 URLs no arquivo")
 
     r2 = get_inspect_cache(DOMAIN, TODAY, url2)
-    check(r2 is not None,               "get retorna dados da URL 2")
+    check(r2 is not None, "get retorna dados da URL 2")
     check(r2["category"] == "not_indexed", "Categoria da URL 2 correta")
 
 
@@ -195,8 +201,11 @@ def test_inspector_use_cache_false():
     # Popula cache manualmente
     url = "https://www.cache-test.com.br/pagina"
     cached_result = {
-        "url": url, "verdict": "PASS", "category": "indexed",
-        "coverageState": "Submitted and indexed", "lastCrawlTime": "2026-05-28T00:00:00Z",
+        "url": url,
+        "verdict": "PASS",
+        "category": "indexed",
+        "coverageState": "Submitted and indexed",
+        "lastCrawlTime": "2026-05-28T00:00:00Z",
     }
     set_inspect_cache(DOMAIN, TODAY, url, cached_result)
     check(get_inspect_cache(DOMAIN, TODAY, url) is not None, "Cache populado com sucesso")
@@ -205,11 +214,12 @@ def test_inspector_use_cache_false():
     class FakeIndex:
         def inspect(self, body):
             return self
+
         def execute(self):
             return {
                 "inspectionResult": {
                     "indexStatusResult": {
-                        "verdict":       "NEUTRAL",
+                        "verdict": "NEUTRAL",
                         "coverageState": "Discovered - currently not indexed",
                         "lastCrawlTime": "",
                     }
@@ -217,17 +227,22 @@ def test_inspector_use_cache_false():
             }
 
     class FakeUrlInspection:
-        def index(self): return FakeIndex()
+        def index(self):
+            return FakeIndex()
 
     class FakeService:
-        def urlInspection(self): return FakeUrlInspection()
+        def urlInspection(self):
+            return FakeUrlInspection()
 
     import fetchers.inspector as insp_mod
+
     results = insp_mod.inspect_urls(FakeService(), DOMAIN, [url], use_cache=False)
 
     check(len(results) == 1, "Retornou 1 resultado")
-    check(results[0]["category"] == "warning",
-          f"Resultado veio da API mock (warning), não do cache (indexed) — got: {results[0]['category']}")
+    check(
+        results[0]["category"] == "warning",
+        f"Resultado veio da API mock (warning), não do cache (indexed) — got: {results[0]['category']}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +271,7 @@ if __name__ == "__main__":
     finally:
         # Limpeza
         folder = _cache_dir(DOMAIN)
-        parent = os.path.dirname(folder)   # relatorios/www.cache-test.com.br
+        parent = os.path.dirname(folder)  # relatorios/www.cache-test.com.br
         if os.path.isdir(parent):
             shutil.rmtree(parent)
         print("\n[cleanup] Pastas de teste removidas.")

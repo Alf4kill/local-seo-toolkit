@@ -31,6 +31,7 @@ RELATORIOS_DIR = os.path.join(BASE_DIR, "relatorios")
 # Helpers de caminho
 # ---------------------------------------------------------------------------
 
+
 def _safe_filename(name: str) -> str:
     """Remove caracteres inválidos para uso em nome de arquivo ou pasta."""
     return re.sub(r"[^\w\-.]", "_", name)
@@ -57,6 +58,7 @@ def _report_path(site: str, date: str, suffix: str, ext: str) -> str:
 # ---------------------------------------------------------------------------
 # historico.json  (arquivo global, não por domínio)
 # ---------------------------------------------------------------------------
+
 
 def load_historico() -> list[dict]:
     """Lê historico.json e retorna a lista de snapshots. Retorna [] se vazio."""
@@ -85,21 +87,23 @@ def append_historico(snapshot: dict) -> None:
 def build_snapshot(site: str, date: str, url_results: list[dict]) -> dict:
     """Monta o dicionário de snapshot para o historico.json."""
     from collections import Counter
+
     counts = Counter(r["category"] for r in url_results)
     return {
-        "site":        site,
-        "date":        date,
-        "total_urls":  len(url_results),
-        "indexed":     counts.get("indexed",     0),
+        "site": site,
+        "date": date,
+        "total_urls": len(url_results),
+        "indexed": counts.get("indexed", 0),
         "not_indexed": counts.get("not_indexed", 0),
-        "warning":     counts.get("warning",     0),
-        "unknown":     counts.get("unknown",     0),
+        "warning": counts.get("warning", 0),
+        "unknown": counts.get("unknown", 0),
     }
 
 
 # ---------------------------------------------------------------------------
 # Relatórios de indexação
 # ---------------------------------------------------------------------------
+
 
 def save_detailed_report(site: str, date: str, report: dict) -> str:
     """
@@ -132,14 +136,14 @@ def save_text_report(site: str, date: str, detailed: dict, consolidated: dict) -
     """
     CATEGORIES = ("indexed", "not_indexed", "warning", "unknown")
     STATUS_LABELS = {
-        "indexed":     "INDEXADO",
+        "indexed": "INDEXADO",
         "not_indexed": "NAO INDEXADO",
-        "warning":     "AVISO",
-        "unknown":     "DESCONHECIDO",
+        "warning": "AVISO",
+        "unknown": "DESCONHECIDO",
     }
 
     lines = []
-    sep  = "=" * 70
+    sep = "=" * 70
     dash = "-" * 70
 
     lines.append(sep)
@@ -149,13 +153,11 @@ def save_text_report(site: str, date: str, detailed: dict, consolidated: dict) -
     lines.append(dash)
 
     for cat in CATEGORIES:
-        data    = consolidated["summary"].get(cat, {"total": 0, "percent": 0.0})
-        label   = cat.replace("_", " ").capitalize()
+        data = consolidated["summary"].get(cat, {"total": 0, "percent": 0.0})
+        label = cat.replace("_", " ").capitalize()
         bar_len = int(data["percent"] / 5)
-        bar     = "#" * bar_len
-        lines.append(
-            f"  {label:<15} {data['total']:>5}  ({data['percent']:>5.1f}%)  [{bar:<20}]"
-        )
+        bar = "#" * bar_len
+        lines.append(f"  {label:<15} {data['total']:>5}  ({data['percent']:>5.1f}%)  [{bar:<20}]")
 
     lines.append(sep)
     lines.append("")
@@ -163,7 +165,7 @@ def save_text_report(site: str, date: str, detailed: dict, consolidated: dict) -
     lines.append(dash)
 
     for entry in detailed["urls"]:
-        cat   = entry["category"]
+        cat = entry["category"]
         label = STATUS_LABELS.get(cat, "DESCONHECIDO")
         lines.append(f"  [{label}]  {entry['url']}")
         if entry.get("coverageState"):
@@ -194,21 +196,25 @@ def save_csv_indexacao(site: str, date: str, detailed: dict) -> str:
     filepath = _report_path(site, date, "indexacao", "csv")
     with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "URL",
-            "Categoria",
-            "Verdict",
-            "Estado de Cobertura",
-            "Ultimo Rastreamento",
-        ])
+        writer.writerow(
+            [
+                "URL",
+                "Categoria",
+                "Verdict",
+                "Estado de Cobertura",
+                "Ultimo Rastreamento",
+            ]
+        )
         for entry in detailed["urls"]:
-            writer.writerow([
-                entry["url"],
-                entry["category"],
-                entry.get("verdict",       ""),
-                entry.get("coverageState", ""),
-                entry.get("lastCrawlTime", ""),
-            ])
+            writer.writerow(
+                [
+                    entry["url"],
+                    entry["category"],
+                    entry.get("verdict", ""),
+                    entry.get("coverageState", ""),
+                    entry.get("lastCrawlTime", ""),
+                ]
+            )
     print(f"[storage] Relatório CSV de indexação salvo em: {filepath}")
     return filepath
 
@@ -216,6 +222,7 @@ def save_csv_indexacao(site: str, date: str, detailed: dict) -> str:
 # ---------------------------------------------------------------------------
 # Relatórios de posicionamento
 # ---------------------------------------------------------------------------
+
 
 def save_position_report(site: str, date: str, report: dict) -> str:
     """
@@ -246,6 +253,7 @@ def save_position_txt(site: str, date: str, data: dict, report: dict) -> str:
         relatorios/{site}/{date}_posicao.txt
     """
     from reporters.position_reporter import build_position_txt_lines
+
     lines = build_position_txt_lines(site, date, data, report)
 
     filepath = _report_path(site, date, "posicao", "txt")
@@ -258,6 +266,7 @@ def save_position_txt(site: str, date: str, data: dict, report: dict) -> str:
 # ---------------------------------------------------------------------------
 # Histórico de posicionamento por URL (arquivo por domínio — Fase 4c)
 # ---------------------------------------------------------------------------
+
 
 def _historico_posicao_path(site: str) -> str:
     return os.path.join(_get_domain_dir(site), "historico_posicao.json")
@@ -301,18 +310,18 @@ def append_historico_posicao(
         if not r.get("has_data"):
             continue
         entry = {
-            "position":    r["position"],
-            "clicks":      r["clicks"],
+            "position": r["position"],
+            "clicks": r["clicks"],
             "impressions": r["impressions"],
         }
         cq = content_results.get(r["url"])
         if cq:
             entry["content"] = {
-                "verdict":   cq.get("verdict"),
-                "density":   cq.get("keyword_density"),
-                "words":     cq.get("word_count"),
+                "verdict": cq.get("verdict"),
+                "density": cq.get("keyword_density"),
+                "words": cq.get("word_count"),
                 "diversity": cq.get("vocab_diversity"),
-                "entities":  cq.get("entity_count"),
+                "entities": cq.get("entity_count"),
             }
         urls_snapshot[r["url"]] = entry
 
@@ -390,22 +399,26 @@ def save_csv_posicao(site: str, date: str, report: dict) -> str:
     filepath = _report_path(site, date, "posicao", "csv")
     with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "URL",
-            "Posicao",
-            "Cliques",
-            "Impressoes",
-            "CTR(%)",
-            "Com Dados",
-        ])
+        writer.writerow(
+            [
+                "URL",
+                "Posicao",
+                "Cliques",
+                "Impressoes",
+                "CTR(%)",
+                "Com Dados",
+            ]
+        )
         for row in report["urls"]:
-            writer.writerow([
-                row["url"],
-                row["position"]  if row["has_data"] else "",
-                row["clicks"],
-                row["impressions"],
-                row["ctr"]       if row["has_data"] else "",
-                "Sim"            if row["has_data"] else "Nao",
-            ])
+            writer.writerow(
+                [
+                    row["url"],
+                    row["position"] if row["has_data"] else "",
+                    row["clicks"],
+                    row["impressions"],
+                    row["ctr"] if row["has_data"] else "",
+                    "Sim" if row["has_data"] else "Nao",
+                ]
+            )
     print(f"[storage] Relatório CSV de posicionamento salvo em: {filepath}")
     return filepath

@@ -9,37 +9,33 @@ def build_position_report(domain: str, today: str, data: dict) -> dict:
 
     data: resultado de position_fetcher.fetch_positions()
     """
-    rows       = data["rows"]
-    with_data  = [r for r in rows if r["has_data"]]
-    no_data    = [r for r in rows if not r["has_data"]]
+    rows = data["rows"]
+    with_data = [r for r in rows if r["has_data"]]
+    no_data = [r for r in rows if not r["has_data"]]
 
     avg_position = (
-        round(sum(r["position"] for r in with_data) / len(with_data), 1)
-        if with_data else None
+        round(sum(r["position"] for r in with_data) / len(with_data), 1) if with_data else None
     )
-    total_clicks      = sum(r["clicks"]      for r in rows)
+    total_clicks = sum(r["clicks"] for r in rows)
     total_impressions = sum(r["impressions"] for r in rows)
-    avg_ctr           = (
-        round(sum(r["ctr"] for r in with_data) / len(with_data), 2)
-        if with_data else 0.0
-    )
+    avg_ctr = round(sum(r["ctr"] for r in with_data) / len(with_data), 2) if with_data else 0.0
 
     return {
         "site": domain,
         "date": today,
         "period": {
-            "start":   data["start_date"],
-            "end":     data["end_date"],
+            "start": data["start_date"],
+            "end": data["end_date"],
             "country": data["country"],
         },
         "summary": {
-            "total_urls_sitemap":  len(rows),
-            "urls_with_data":      len(with_data),
+            "total_urls_sitemap": len(rows),
+            "urls_with_data": len(with_data),
             "urls_no_impressions": len(no_data),
-            "avg_position_site":   avg_position,
-            "total_clicks":        total_clicks,
-            "total_impressions":   total_impressions,
-            "avg_ctr_percent":     avg_ctr,
+            "avg_position_site": avg_position,
+            "total_clicks": total_clicks,
+            "total_impressions": total_impressions,
+            "avg_ctr_percent": avg_ctr,
         },
         "urls": rows,
     }
@@ -47,18 +43,17 @@ def build_position_report(domain: str, today: str, data: dict) -> dict:
 
 def print_position_report(domain: str, today: str, data: dict) -> None:
     """Imprime o relatório de posicionamento no terminal."""
-    rows      = data["rows"]
+    rows = data["rows"]
     with_data = [r for r in rows if r["has_data"]]
-    no_data   = [r for r in rows if not r["has_data"]]
+    no_data = [r for r in rows if not r["has_data"]]
 
     avg_position = (
-        round(sum(r["position"] for r in with_data) / len(with_data), 1)
-        if with_data else None
+        round(sum(r["position"] for r in with_data) / len(with_data), 1) if with_data else None
     )
-    total_clicks      = sum(r["clicks"]      for r in rows)
+    total_clicks = sum(r["clicks"] for r in rows)
     total_impressions = sum(r["impressions"] for r in rows)
 
-    sep  = "=" * 82
+    sep = "=" * 82
     dash = "-" * 82
 
     print("\n" + sep)
@@ -81,15 +76,15 @@ def print_position_report(domain: str, today: str, data: dict) -> None:
 
     for r in rows:
         if r["has_data"]:
-            pos         = f"{r['position']:>5.1f}"
-            clicks      = f"{r['clicks']:>8,}"
+            pos = f"{r['position']:>5.1f}"
+            clicks = f"{r['clicks']:>8,}"
             impressions = f"{r['impressions']:>11,}"
-            ctr         = f"{r['ctr']:>6.2f}%"
+            ctr = f"{r['ctr']:>6.2f}%"
         else:
-            pos         = "  s/d"
-            clicks      = f"{'0':>8}"
+            pos = "  s/d"
+            clicks = f"{'0':>8}"
             impressions = f"{'0':>11}"
-            ctr         = "   s/d "
+            ctr = "   s/d "
 
         url_display = r["url"]
         if len(url_display) > 52:
@@ -105,12 +100,12 @@ def build_position_txt_lines(domain: str, today: str, data: dict, report: dict) 
     Gera as linhas do relatório de posicionamento em formato texto legível.
     Usado por storage.save_position_txt().
     """
-    rows      = data["rows"]
+    rows = data["rows"]
     with_data = [r for r in rows if r["has_data"]]
-    no_data   = [r for r in rows if not r["has_data"]]
-    summary   = report["summary"]
+    no_data = [r for r in rows if not r["has_data"]]
+    summary = report["summary"]
 
-    sep  = "=" * 82
+    sep = "=" * 82
     dash = "-" * 82
     lines = []
 
@@ -123,7 +118,9 @@ def build_position_txt_lines(domain: str, today: str, data: dict, report: dict) 
     lines.append(f"  URLs com dados GSC   : {len(with_data):>5}")
     lines.append(f"  URLs sem impressoes  : {len(no_data):>5}")
     lines.append(dash)
-    lines.append(f"  Posicao media geral  : {summary['avg_position_site'] if summary['avg_position_site'] else 's/d':>5}")
+    lines.append(
+        f"  Posicao media geral  : {summary['avg_position_site'] if summary['avg_position_site'] else 's/d':>5}"
+    )
     lines.append(f"  Total de cliques     : {summary['total_clicks']:>5,}")
     lines.append(f"  Total de impressoes  : {summary['total_impressions']:>5,}")
     lines.append(dash)
@@ -132,15 +129,15 @@ def build_position_txt_lines(domain: str, today: str, data: dict, report: dict) 
 
     for r in rows:
         if r["has_data"]:
-            pos         = f"{r['position']:>5.1f}"
-            clicks      = f"{r['clicks']:>8,}"
+            pos = f"{r['position']:>5.1f}"
+            clicks = f"{r['clicks']:>8,}"
             impressions = f"{r['impressions']:>11,}"
-            ctr         = f"{r['ctr']:>6.2f}%"
+            ctr = f"{r['ctr']:>6.2f}%"
         else:
-            pos         = "  s/d"
-            clicks      = f"{'0':>8}"
+            pos = "  s/d"
+            clicks = f"{'0':>8}"
             impressions = f"{'0':>11}"
-            ctr         = "   s/d "
+            ctr = "   s/d "
 
         lines.append(f"  {pos}  {clicks}  {impressions}  {ctr}  {r['url']}")
 

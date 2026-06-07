@@ -23,6 +23,7 @@ from core.urls import normalize_domain
 # Redirect de stdout para a queue
 # ---------------------------------------------------------------------------
 
+
 class QueueStream:
     """
     Stream que redireciona write() para uma queue.Queue thread-safe.
@@ -31,8 +32,9 @@ class QueueStream:
     Implementa os atributos mínimos do protocolo io.TextIOBase para
     compatibilidade com código que inspeciona sys.stdout (ex: encoding).
     """
-    encoding = "utf-8"   # atributo de classe — evita AttributeError em
-                         # código que faz sys.stdout.encoding ou getattr
+
+    encoding = "utf-8"  # atributo de classe — evita AttributeError em
+    # código que faz sys.stdout.encoding ou getattr
 
     def __init__(self, q: queue.Queue):
         self._q = q
@@ -55,6 +57,7 @@ class QueueStream:
 # ---------------------------------------------------------------------------
 # Lógica de cada tarefa
 # ---------------------------------------------------------------------------
+
 
 def _run_indexation(
     service,
@@ -100,7 +103,7 @@ def _run_indexation(
     print(f"[indexação] Inspecionando {len(urls)} URL(s)...\n")
     url_results = inspect_urls(service, site, urls, use_cache=use_cache)
 
-    detailed     = build_detailed(domain, today, url_results)
+    detailed = build_detailed(domain, today, url_results)
     consolidated = build_consolidated(domain, today, url_results)
 
     save_detailed_report(domain, today, detailed)
@@ -196,6 +199,7 @@ def _run_position(
 
     # Fase 5a — Knowledge Graph
     from fetchers.knowledge_graph import load_api_key, print_kg_result, search_entity
+
     if api_key is None:
         api_key = load_api_key()
     kg_result = search_entity(domain, api_key=api_key, use_cache=use_cache)
@@ -205,6 +209,7 @@ def _run_position(
     query_rows = None
     if do_queries or do_trends or do_content:
         from fetchers.position_fetcher import fetch_query_positions
+
         try:
             query_rows = fetch_query_positions(service, site, use_cache=use_cache)
         except Exception as exc:
@@ -220,6 +225,7 @@ def _run_position(
     trends_data = None
     if do_trends and query_rows:
         from fetchers.trends_fetcher import fetch_trends, print_trends, top_keywords_from_queries
+
         top_kws = top_keywords_from_queries(query_rows)
         if top_kws:
             trends_data = fetch_trends(top_kws, domain, use_cache=use_cache)
@@ -231,15 +237,23 @@ def _run_position(
     nlp_results = None
     if do_nlp:
         from fetchers.nlp_analyzer import analyze_opportunity_urls, print_nlp_results
+
         nlp_results = analyze_opportunity_urls(
-            report["urls"], domain, api_key=api_key, use_cache=use_cache,
+            report["urls"],
+            domain,
+            api_key=api_key,
+            use_cache=use_cache,
         )
         print_nlp_results(nlp_results)
 
         # Relatório NLP detalhado — sempre gerado quando NLP está ativo
         from reporters.nlp_report_generator import generate_nlp_report
+
         nlp_html = generate_nlp_report(
-            domain, today, nlp_results, query_rows=query_rows,
+            domain,
+            today,
+            nlp_results,
+            query_rows=query_rows,
         )
         save_nlp_report(domain, today, nlp_html)
 
@@ -247,9 +261,13 @@ def _run_position(
     content_results = None
     if do_content:
         from fetchers.content_fetcher import analyze_opportunity_content_quality
+
         content_results = analyze_opportunity_content_quality(
-            report["urls"], domain, query_rows=query_rows,
-            nlp_results=nlp_results, use_cache=use_cache,
+            report["urls"],
+            domain,
+            query_rows=query_rows,
+            nlp_results=nlp_results,
+            use_cache=use_cache,
         )
 
     # Fase 4c + Move 2 — histórico de posição por URL (com métricas de conteúdo)
@@ -258,6 +276,7 @@ def _run_position(
 
     # Move 2 — acompanhamento conteúdo × posição
     from core.content_quality import build_content_tracking, print_content_tracking
+
     tracking = build_content_tracking(historico_posicao)
     print_content_tracking(tracking)
 
@@ -268,8 +287,12 @@ def _run_position(
 
     # Dashboard HTML (sempre gerado)
     from reporters.html_reporter import generate_dashboard
+
     html = generate_dashboard(
-        domain, today, data, report,
+        domain,
+        today,
+        data,
+        report,
         health=health,
         orphans=orphans if orphans else None,
         historico_posicao=historico_posicao,
@@ -286,13 +309,15 @@ def _run_position(
 
     if "excel" in formats:
         from reporters.excel_reporter import generate_excel
+
         hist_for_excel = (
-            historico_posicao
-            if len(historico_posicao.get("snapshots", [])) >= 2
-            else None
+            historico_posicao if len(historico_posicao.get("snapshots", [])) >= 2 else None
         )
         wb = generate_excel(
-            domain, today, data, report,
+            domain,
+            today,
+            data,
+            report,
             health=health,
             orphans=orphans if orphans else None,
             historico_posicao=hist_for_excel,
@@ -309,6 +334,7 @@ def _run_position(
 # ---------------------------------------------------------------------------
 # Ponto de entrada chamado pela GUI
 # ---------------------------------------------------------------------------
+
 
 def run_tasks(
     params: dict,
@@ -341,21 +367,22 @@ def run_tasks(
             sys.stdout = QueueStream(output_queue)
             sys.stderr = QueueStream(output_queue)
 
-            site       = params["site"].strip()
-            domain     = normalize_domain(site)
-            today      = date.today().isoformat()
-            use_cache  = not params.get("no_cache", False)
-            limit      = params.get("limit")
-            formats    = params.get("formats", set())
+            site = params["site"].strip()
+            domain = normalize_domain(site)
+            today = date.today().isoformat()
+            use_cache = not params.get("no_cache", False)
+            limit = params.get("limit")
+            formats = params.get("formats", set())
             do_queries = params.get("do_queries", False)
-            do_trends  = params.get("do_trends",  False)
-            do_nlp     = params.get("do_nlp",     False)
+            do_trends = params.get("do_trends", False)
+            do_nlp = params.get("do_nlp", False)
             do_content = params.get("do_content", False)
-            api_key    = params.get("api_key") or None
+            api_key = params.get("api_key") or None
 
             # Salva API key se fornecida via GUI
             if api_key:
                 from fetchers.knowledge_graph import save_api_key
+
                 save_api_key(api_key)
 
             print(f"\n{'=' * 55}")
@@ -365,6 +392,7 @@ def run_tasks(
             print(f"{'=' * 55}\n")
 
             from core.auth import build_service
+
             try:
                 service = build_service()
             except FileNotFoundError as exc:
@@ -376,7 +404,12 @@ def run_tasks(
 
             if params.get("do_position"):
                 _run_position(
-                    service, site, domain, today, formats, use_cache,
+                    service,
+                    site,
+                    domain,
+                    today,
+                    formats,
+                    use_cache,
                     do_queries=do_queries,
                     do_trends=do_trends,
                     do_nlp=do_nlp,

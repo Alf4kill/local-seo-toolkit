@@ -27,6 +27,7 @@ from core.analytics import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_position_report(rows: list) -> dict:
     """Monta um position_report mínimo para os testes."""
     return {"urls": rows}
@@ -34,8 +35,12 @@ def _make_position_report(rows: list) -> dict:
 
 def _row(url, position=None, clicks=0, impressions=0, ctr=0.0, has_data=True):
     return {
-        "url": url, "position": position, "clicks": clicks,
-        "impressions": impressions, "ctr": ctr, "has_data": has_data,
+        "url": url,
+        "position": position,
+        "clicks": clicks,
+        "impressions": impressions,
+        "ctr": ctr,
+        "has_data": has_data,
     }
 
 
@@ -43,8 +48,8 @@ def _row(url, position=None, clicks=0, impressions=0, ctr=0.0, has_data=True):
 # 4d — Score de saúde
 # ---------------------------------------------------------------------------
 
-class TestHealthScore(unittest.TestCase):
 
+class TestHealthScore(unittest.TestCase):
     def test_perfeito(self):
         """Site com 100% indexados, posição média 1, CTR perfeito."""
         rows = [_row("https://ex.com/1", position=1.0, impressions=1000, ctr=28.5)]
@@ -106,8 +111,8 @@ class TestHealthScore(unittest.TestCase):
 # 4a — Páginas órfãs
 # ---------------------------------------------------------------------------
 
-class TestOrphanPages(unittest.TestCase):
 
+class TestOrphanPages(unittest.TestCase):
     def test_detecta_orfas(self):
         rows = [
             _row("https://ex.com/1", has_data=True, position=5.0),
@@ -141,12 +146,16 @@ class TestOrphanPages(unittest.TestCase):
 # 4b — Canibalização
 # ---------------------------------------------------------------------------
 
-class TestCannibalization(unittest.TestCase):
 
+class TestCannibalization(unittest.TestCase):
     def _query_row(self, query, url, position=5.0, clicks=10, impressions=100, ctr=10.0):
         return {
-            "query": query, "url": url, "position": position,
-            "clicks": clicks, "impressions": impressions, "ctr": ctr,
+            "query": query,
+            "url": url,
+            "position": position,
+            "clicks": clicks,
+            "impressions": impressions,
+            "ctr": ctr,
         }
 
     def test_detecta_canibalizacao(self):
@@ -174,7 +183,7 @@ class TestCannibalization(unittest.TestCase):
             self._query_row("kw1", "https://ex.com/b"),
             self._query_row("kw2", "https://ex.com/c"),
             self._query_row("kw2", "https://ex.com/d"),
-            self._query_row("kw2", "https://ex.com/e"),   # 3 URLs
+            self._query_row("kw2", "https://ex.com/e"),  # 3 URLs
         ]
         result = detect_cannibalization(rows)
         self.assertEqual(result[0]["query"], "kw2")
@@ -186,7 +195,7 @@ class TestCannibalization(unittest.TestCase):
             self._query_row("kw", "https://ex.com/a", position=2.0),
         ]
         result = detect_cannibalization(rows)
-        self.assertEqual(result[0]["urls"][0]["url"], "https://ex.com/a")   # menor posição primeiro
+        self.assertEqual(result[0]["urls"][0]["url"], "https://ex.com/a")  # menor posição primeiro
 
     def test_lista_vazia(self):
         result = detect_cannibalization([])
@@ -196,7 +205,9 @@ class TestCannibalization(unittest.TestCase):
         """URL com impressões abaixo do limiar não conta como concorrente."""
         rows = [
             self._query_row("kw", "https://ex.com/a", position=3.0, impressions=500),
-            self._query_row("kw", "https://ex.com/b", position=7.0, impressions=2),  # volume desprezível
+            self._query_row(
+                "kw", "https://ex.com/b", position=7.0, impressions=2
+            ),  # volume desprezível
         ]
         result = detect_cannibalization(rows)
         self.assertEqual(len(result), 0)
@@ -205,7 +216,9 @@ class TestCannibalization(unittest.TestCase):
         """URL com posição muito ruim não conta como concorrente."""
         rows = [
             self._query_row("kw", "https://ex.com/a", position=4.0, impressions=300),
-            self._query_row("kw", "https://ex.com/b", position=85.0, impressions=300),  # não compete
+            self._query_row(
+                "kw", "https://ex.com/b", position=85.0, impressions=300
+            ),  # não compete
         ]
         result = detect_cannibalization(rows)
         self.assertEqual(len(result), 0)
@@ -226,22 +239,25 @@ class TestCannibalization(unittest.TestCase):
 # 4c — Histórico de posicionamento por URL
 # ---------------------------------------------------------------------------
 
-class TestHistoricoPosicao(unittest.TestCase):
 
+class TestHistoricoPosicao(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         # Redireciona RELATORIOS_DIR para diretório temporário
         import core.storage as st
+
         self._orig_relatorios = st.RELATORIOS_DIR
         st.RELATORIOS_DIR = self.tmp
 
     def tearDown(self):
         import core.storage as st
+
         st.RELATORIOS_DIR = self._orig_relatorios
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_append_e_load(self):
         from core.storage import append_historico_posicao, load_historico_posicao
+
         rows = [
             _row("https://ex.com/1", position=5.0, clicks=10, impressions=200, has_data=True),
             _row("https://ex.com/2", has_data=False),
@@ -259,6 +275,7 @@ class TestHistoricoPosicao(unittest.TestCase):
 
     def test_deduplicacao_mesmo_dia(self):
         from core.storage import append_historico_posicao, load_historico_posicao
+
         rows = [_row("https://ex.com/1", position=5.0, clicks=10, impressions=200, has_data=True)]
         period = {"start": "2026-05-01", "end": "2026-05-30"}
         append_historico_posicao("www.ex.com", "2026-05-30", period, rows)
@@ -271,6 +288,7 @@ class TestHistoricoPosicao(unittest.TestCase):
 
     def test_limita_30_snapshots(self):
         from core.storage import append_historico_posicao, load_historico_posicao
+
         rows = [_row("https://ex.com/1", position=5.0, clicks=5, impressions=100, has_data=True)]
         period = {"start": "2026-01-01", "end": "2026-01-30"}
         for i in range(35):
@@ -281,25 +299,28 @@ class TestHistoricoPosicao(unittest.TestCase):
 
     def test_load_sem_arquivo(self):
         from core.storage import load_historico_posicao
+
         hist = load_historico_posicao("dominio.que.nao.existe")
         self.assertEqual(hist["snapshots"], [])
 
 
 class TestLoadLatestConsolidated(unittest.TestCase):
-
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         import core.storage as st
+
         self._orig = st.RELATORIOS_DIR
         st.RELATORIOS_DIR = self.tmp
 
     def tearDown(self):
         import core.storage as st
+
         st.RELATORIOS_DIR = self._orig
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_retorna_mais_recente(self):
         from core.storage import _get_domain_dir, load_latest_consolidated
+
         domain_dir = _get_domain_dir("www.ex.com")
         # Cria dois arquivos consolidados
         data_old = {"total_urls": 10, "summary": {"indexed": {"total": 8, "percent": 80.0}}}
@@ -315,6 +336,7 @@ class TestLoadLatestConsolidated(unittest.TestCase):
 
     def test_retorna_none_sem_arquivo(self):
         from core.storage import load_latest_consolidated
+
         result = load_latest_consolidated("dominio.sem.arquivo")
         self.assertIsNone(result)
 

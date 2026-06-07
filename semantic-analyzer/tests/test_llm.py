@@ -10,7 +10,6 @@ from core.llm import parse_json_block
 
 
 class TestParseJson(unittest.TestCase):
-
     def test_plain(self):
         self.assertEqual(parse_json_block('{"a": 1}'), {"a": 1})
 
