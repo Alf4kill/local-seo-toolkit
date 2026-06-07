@@ -361,6 +361,30 @@ def load_latest_consolidated(site: str) -> "dict | None":
         return None
 
 
+def load_latest_position_report(site: str) -> "dict | None":
+    """
+    Carrega o relatório de posicionamento (JSON) mais recente do domínio.
+    Usado pelo analisador de logs para cruzar crawl × impressões (money pages).
+
+    Filtra SÓ os arquivos datados `{data}_posicao.json` — `historico_posicao.json`
+    também termina em `_posicao.json` e seria um falso positivo sem o regex.
+    Retorna None se nenhum encontrado.
+    """
+    domain_dir = _get_domain_dir(site)
+    dated = re.compile(r"\d{4}-\d{2}-\d{2}_posicao\.json$")
+    try:
+        files = sorted([f for f in os.listdir(domain_dir) if dated.search(f)], reverse=True)
+    except OSError:
+        return None
+    if not files:
+        return None
+    try:
+        with open(os.path.join(domain_dir, files[0]), encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def save_dashboard(site: str, html: str) -> str:
     """
     Salva o dashboard HTML em:
@@ -421,4 +445,73 @@ def save_csv_posicao(site: str, date: str, report: dict) -> str:
                 ]
             )
     print(f"[storage] Relatório CSV de posicionamento salvo em: {filepath}")
+    return filepath
+
+
+# ---------------------------------------------------------------------------
+# Relatórios de crawl budget (logs.py / core.log_analyzer)
+# ---------------------------------------------------------------------------
+
+
+def save_crawl_report(site: str, date: str, report: dict) -> str:
+    """Salva o relatório de crawl (JSON) em relatorios/{site}/{date}_crawl.json."""
+    filepath = _report_path(site, date, "crawl", "json")
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    print(f"[storage] Relatório de crawl salvo em: {filepath}")
+    return filepath
+
+
+def save_crawl_txt(site: str, date: str, text: str) -> str:
+    """Salva o relatório de crawl legível em relatorios/{site}/{date}_crawl.txt."""
+    filepath = _report_path(site, date, "crawl", "txt")
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"[storage] Relatório de crawl .txt salvo em: {filepath}")
+    return filepath
+
+
+def save_crawl_html(site: str, date: str, html: str) -> str:
+    """Salva o dashboard de crawl em relatorios/{site}/{date}_crawl.html."""
+    filepath = _report_path(site, date, "crawl", "html")
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"[storage] Relatório de crawl HTML salvo em: {filepath}")
+    return filepath
+
+
+def save_crawl_csv(site: str, date: str, report: dict) -> str:
+    """
+    CSV por URL rastreada pelo Googlebot:
+        Path | Hits | Ultimo Acesso | 2xx | 3xx | 4xx | 5xx | Bytes | Metodos
+
+    Encoding utf-8-sig para abrir direto no Excel (Windows).
+    """
+    filepath = _report_path(site, date, "crawl", "csv")
+    by_path = report.get("googlebot", {}).get("by_path", [])
+    with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["Path", "Hits", "Ultimo Acesso", "2xx", "3xx", "4xx", "5xx", "Bytes", "Metodos"]
+        )
+        for r in by_path:
+            buckets = {"2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0}
+            for code, n in r.get("status_mix", {}).items():
+                key = f"{code[:1]}xx"
+                if key in buckets:
+                    buckets[key] += n
+            writer.writerow(
+                [
+                    r["path"],
+                    r["hits"],
+                    r.get("last_seen") or "",
+                    buckets["2xx"],
+                    buckets["3xx"],
+                    buckets["4xx"],
+                    buckets["5xx"],
+                    r.get("bytes", 0),
+                    " ".join(r.get("methods", [])),
+                ]
+            )
+    print(f"[storage] Relatório de crawl CSV salvo em: {filepath}")
     return filepath
