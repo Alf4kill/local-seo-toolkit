@@ -40,6 +40,7 @@ from datetime import date
 
 from core.auth import build_service
 from core.sitemap import fetch_urls
+from core.urls import normalize_domain
 from fetchers.inspector import inspect_urls
 from reporters.reporter import build_detailed, build_consolidated, print_consolidated, print_detailed
 from core.storage import (
@@ -91,17 +92,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para uso nos nomes de arquivo e sitemap fetch."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
-
-
 def main() -> None:
     args = parse_args()
     today = date.today().isoformat()  # ex: "2026-04-27"
-    domain = _normalize_domain(args.site)
+    domain = normalize_domain(args.site)
 
     print(f"\n=== GSC Monitor — {domain} — {today} ===\n")
 

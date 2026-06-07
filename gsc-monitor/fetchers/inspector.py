@@ -7,28 +7,11 @@ Suporta cache em disco para evitar rechamadas desnecessárias (cota: 2000/dia).
 import time
 from datetime import date
 from googleapiclient.errors import HttpError
+
 from core.classifier import classify
+from core.urls import build_site_url, normalize_domain
 
 DELAY_BETWEEN_REQUESTS = 0.5  # segundos — evita burst na quota (2000 req/dia)
-
-
-def _build_site_url(domain: str) -> str:
-    """
-    Retorna o siteUrl no formato padrão URL Prefix.
-    O GSC exige que seja exatamente como cadastrado (protocolo + trailing slash).
-    """
-    if domain.startswith("sc-domain:"):
-        return domain  # Domain Property — já no formato correto
-    if domain.startswith("http://") or domain.startswith("https://"):
-        return domain.rstrip("/") + "/"
-    return f"https://{domain.rstrip('/')}/"
-
-
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para uso como chave de cache."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
 
 
 def inspect_urls(
@@ -58,8 +41,8 @@ def inspect_urls(
     """
     from core.cache import get_inspect_cache, set_inspect_cache
 
-    site_url   = _build_site_url(domain)
-    cache_site = _normalize_domain(domain)
+    site_url   = build_site_url(domain)
+    cache_site = normalize_domain(domain)
     today_str  = date.today().isoformat()
     results    = []
     total      = len(urls)

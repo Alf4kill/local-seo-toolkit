@@ -36,6 +36,7 @@ from datetime import date
 
 from core.auth import build_service
 from core.sitemap import fetch_urls
+from core.urls import normalize_domain
 from fetchers.position_fetcher import fetch_positions
 from reporters.position_reporter import build_position_report, print_position_report
 from core.storage import (
@@ -114,17 +115,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para nomes de arquivo e fetch do sitemap."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
-
-
 def main() -> None:
     args   = parse_args()
     today  = date.today().isoformat()
-    domain = _normalize_domain(args.site)
+    domain = normalize_domain(args.site)
 
     print(f"\n=== GSC Posicionamento — {domain} — {today} ===\n")
 

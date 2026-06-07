@@ -17,6 +17,8 @@ _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
+from core.urls import normalize_domain
+
 
 # ---------------------------------------------------------------------------
 # Redirect de stdout para a queue
@@ -50,12 +52,6 @@ class QueueStream:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _normalize_domain(site: str) -> str:
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
-
 
 # ---------------------------------------------------------------------------
 # Lógica de cada tarefa
@@ -336,7 +332,7 @@ def run_tasks(
             sys.stderr = QueueStream(output_queue)
 
             site       = params["site"].strip()
-            domain     = _normalize_domain(site)
+            domain     = normalize_domain(site)
             today      = date.today().isoformat()
             use_cache  = not params.get("no_cache", False)
             limit      = params.get("limit")

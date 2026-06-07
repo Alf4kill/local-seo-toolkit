@@ -5,7 +5,10 @@ Suporta cache em disco para evitar rechamadas desnecessárias.
 """
 
 from datetime import date, timedelta
+
 from googleapiclient.errors import HttpError
+
+from core.urls import build_site_url, normalize_domain
 
 
 # ---------------------------------------------------------------------------
@@ -24,22 +27,6 @@ def _build_date_range(days_back: int = DAYS_BACK) -> tuple[str, str]:
     end   = date.today() - timedelta(days=3)
     start = end - timedelta(days=days_back)
     return start.isoformat(), end.isoformat()
-
-
-def _build_site_url(domain: str) -> str:
-    """Formata o siteUrl no padrão exigido pela Search Analytics API."""
-    if domain.startswith("sc-domain:"):
-        return domain
-    if domain.startswith("http://") or domain.startswith("https://"):
-        return domain.rstrip("/") + "/"
-    return f"https://{domain.rstrip('/')}/"
-
-
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para uso como chave de cache."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
 
 
 def fetch_positions(
@@ -86,8 +73,8 @@ def fetch_positions(
     """
     from core.cache import get_posicao_cache, set_posicao_cache
 
-    site_url    = _build_site_url(domain)
-    cache_site  = _normalize_domain(domain)
+    site_url    = build_site_url(domain)
+    cache_site  = normalize_domain(domain)
     start_date, end_date = _build_date_range()
 
     print(f"[position_fetcher] Período  : {start_date}  a  {end_date}  ({DAYS_BACK} dias)")
@@ -186,8 +173,8 @@ def fetch_query_positions(
     """
     from core.cache import get_query_cache, set_query_cache
 
-    site_url   = _build_site_url(domain)
-    cache_site = _normalize_domain(domain)
+    site_url   = build_site_url(domain)
+    cache_site = normalize_domain(domain)
     start_date, end_date = _build_date_range()
 
     print(f"[position_fetcher] Consultando queries (canibalização)...")
