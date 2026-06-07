@@ -1,0 +1,8 @@
+# Dependências apenas para desenvolvimento e testes do Semantic Analyzer.
+# Instale com: pip install -r requirements-dev.txt
+#
+# O núcleo de testes roda só com numpy (já em requirements.txt). pytest é o
+# runner único da suíte; ruff faz lint + format.
+
+pytest>=8.0
+ruff==0.15.16

@@ -26,10 +26,11 @@ def slugify(s: str) -> str:
 
 def extract_text(markup: str) -> str:
     """Texto puro a partir de HTML/PHP."""
-    markup = re.sub(r"<\?.*?\?>", " ", markup, flags=re.DOTALL)                       # blocos PHP
-    markup = re.sub(r"<(script|style)[^>]*>.*?</(script|style)>", " ", markup,
-                    flags=re.DOTALL | re.IGNORECASE)                                  # script/style
-    markup = re.sub(r"<[^>]+>", " ", markup)                                          # demais tags
+    markup = re.sub(r"<\?.*?\?>", " ", markup, flags=re.DOTALL)  # blocos PHP
+    markup = re.sub(
+        r"<(script|style)[^>]*>.*?</(script|style)>", " ", markup, flags=re.DOTALL | re.IGNORECASE
+    )  # script/style
+    markup = re.sub(r"<[^>]+>", " ", markup)  # demais tags
     return re.sub(r"\s+", " ", H.unescape(markup)).strip()
 
 
@@ -86,11 +87,11 @@ def load_from_primeweb(base_path: str, min_chars: int = 300) -> dict:
 def load_from_urls(urls: list, min_chars: int = 300, timeout: int = 12) -> dict:
     """Baixa cada URL e extrai o texto. Retorna {url: texto}. Requer 'requests'."""
     import requests
+
     out = {}
     for url in urls:
         try:
-            r = requests.get(url, timeout=timeout,
-                             headers={"User-Agent": "semantic-analyzer/1.0"})
+            r = requests.get(url, timeout=timeout, headers={"User-Agent": "semantic-analyzer/1.0"})
             r.raise_for_status()
             txt = extract_text(r.text)
             if len(txt) >= min_chars:
@@ -105,6 +106,7 @@ def load_from_urls(urls: list, min_chars: int = 300, timeout: int = 12) -> dict:
 # precisa das tags <a href>. Retorna {slug: markup}. Carrega TODAS as páginas
 # (sem filtro de min_chars) p/ que links vindos de páginas curtas também contem.
 # ---------------------------------------------------------------------------
+
 
 def load_sources_from_folder(
     path: str,
@@ -145,11 +147,11 @@ def load_sources_from_primeweb(base_path: str) -> dict:
 def load_sources_from_urls(urls: list, timeout: int = 12) -> dict:
     """Baixa cada URL e retorna o markup CRU (p/ extrair links). {url: markup}."""
     import requests
+
     out = {}
     for url in urls:
         try:
-            r = requests.get(url, timeout=timeout,
-                             headers={"User-Agent": "semantic-analyzer/1.0"})
+            r = requests.get(url, timeout=timeout, headers={"User-Agent": "semantic-analyzer/1.0"})
             r.raise_for_status()
             out[url] = r.text
         except Exception as exc:

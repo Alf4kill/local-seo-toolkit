@@ -60,8 +60,8 @@ py posicao.py --site www.exemplo.com.br --excel --queries --content --nlp
 # CLI indexação (cuidado com a cota 2.000/dia — use --limit ao testar)
 py main.py --site www.exemplo.com.br --limit 10
 
-# Testes  (104 testes; rode da pasta gsc-monitor/)
-py -m unittest discover -s tests -t .
+# Testes  (154 testes; rode da pasta gsc-monitor/)
+py -m pytest
 ```
 
 **Credenciais:** `client_secrets.json` (OAuth desktop) + `token.json` (gerado;
@@ -220,5 +220,5 @@ loop do Move 2. Baseline de 8 URLs gravado em 2026-06-02.
   do plano estratégico). Hoje a direção é **A: aprofundar a ferramenta local**.
 
 > Regra ao evoluir: corrigir correção/honestidade antes de adicionar features;
-> manter tudo em free tier / local; rodar `py -m unittest discover -s tests -t .`
+> manter tudo em free tier / local; rodar `py -m pytest`
 > após cada mudança.

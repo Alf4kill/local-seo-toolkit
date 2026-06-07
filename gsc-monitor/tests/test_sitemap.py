@@ -10,7 +10,6 @@ e a extração de Sitemap: do robots.txt. Tudo offline.
 import core.sitemap as sm
 from core.sitemap import _parse_sitemap
 
-
 NS = sm.SITEMAP_NS
 
 
@@ -25,16 +24,15 @@ def _sitemapindex(*locs):
 
 
 class TestParseSitemap:
-
     def test_urlset_retorna_paginas(self):
-        pages, subs = _parse_sitemap(_urlset(
-            "https://ex.com/a", "https://ex.com/b"))
+        pages, subs = _parse_sitemap(_urlset("https://ex.com/a", "https://ex.com/b"))
         assert pages == ["https://ex.com/a", "https://ex.com/b"]
         assert subs == []
 
     def test_sitemapindex_retorna_subsitemaps(self):
-        pages, subs = _parse_sitemap(_sitemapindex(
-            "https://ex.com/sitemap1.xml", "https://ex.com/sitemap2.xml"))
+        pages, subs = _parse_sitemap(
+            _sitemapindex("https://ex.com/sitemap1.xml", "https://ex.com/sitemap2.xml")
+        )
         assert pages == []
         assert subs == ["https://ex.com/sitemap1.xml", "https://ex.com/sitemap2.xml"]
 
@@ -55,11 +53,10 @@ class TestParseSitemap:
 
 
 class TestSitemapFromRobots:
-
     def test_extrai_diretiva_sitemap(self, monkeypatch):
         class FakeResp:
-            text = ("User-agent: *\nDisallow:\n"
-                    "Sitemap: https://ex.com/meu-sitemap.xml\n")
+            text = "User-agent: *\nDisallow:\nSitemap: https://ex.com/meu-sitemap.xml\n"
+
         # Primeiro scheme (https) responde.
         monkeypatch.setattr(sm, "_get", lambda url: FakeResp() if url.startswith("https") else None)
         assert sm._sitemap_from_robots("ex.com") == "https://ex.com/meu-sitemap.xml"
@@ -67,6 +64,7 @@ class TestSitemapFromRobots:
     def test_sem_diretiva_retorna_none(self, monkeypatch):
         class FakeResp:
             text = "User-agent: *\nDisallow: /admin\n"
+
         monkeypatch.setattr(sm, "_get", lambda url: FakeResp())
         assert sm._sitemap_from_robots("ex.com") is None
 

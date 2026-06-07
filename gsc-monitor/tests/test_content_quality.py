@@ -15,15 +15,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.content_quality import (
     analyze_content_quality,
     keyword_density,
-    vocab_diversity,
     salience_concentration,
     target_keywords_for_url,
+    vocab_diversity,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers para gerar textos sintéticos
 # ---------------------------------------------------------------------------
+
 
 def _balanced_text(n_words=400, keyword="aquecedor industrial", kw_times=4):
     """Texto longo, vocabulário variado, keyword em densidade natural."""
@@ -46,8 +46,8 @@ def _stuffed_text(n_words=400, keyword="aquecedor industrial", kw_times=25):
 # Sinais locais isolados
 # ---------------------------------------------------------------------------
 
-class TestLocalSignals(unittest.TestCase):
 
+class TestLocalSignals(unittest.TestCase):
     def test_density_multiword(self):
         text = "aquecedor industrial " + "outra palavra qualquer " * 48  # 2 + 144 = 146 tokens
         dens, occ = keyword_density(text, "aquecedor industrial")
@@ -72,8 +72,8 @@ class TestLocalSignals(unittest.TestCase):
 # Veredito — sinais locais
 # ---------------------------------------------------------------------------
 
-class TestVerdictLocal(unittest.TestCase):
 
+class TestVerdictLocal(unittest.TestCase):
     def test_conteudo_raso(self):
         cq = analyze_content_quality("Texto muito curto sobre o tema.", ["tema"])
         self.assertEqual(cq["verdict"], "raso")
@@ -104,13 +104,12 @@ class TestVerdictLocal(unittest.TestCase):
 # Veredito — sinais NLP
 # ---------------------------------------------------------------------------
 
-class TestVerdictNlp(unittest.TestCase):
 
+class TestVerdictNlp(unittest.TestCase):
     def test_saliencia_concentrada_e_amplitude_pobre(self):
         text = _balanced_text()  # tamanho ok, para isolar os sinais NLP
         nlp = {
-            "entities": [{"name": "aquecedor", "salience": 0.92},
-                         {"name": "x", "salience": 0.08}],
+            "entities": [{"name": "aquecedor", "salience": 0.92}, {"name": "x", "salience": 0.08}],
             "categories": [{"name": "/Business", "confidence": 0.9}],
         }
         cq = analyze_content_quality(text, ["aquecedor industrial"], nlp)
@@ -123,31 +122,43 @@ class TestVerdictNlp(unittest.TestCase):
 
     def test_nao_classificavel(self):
         text = _balanced_text()
-        nlp = {"entities": [{"name": "a", "salience": 0.3},
-                            {"name": "b", "salience": 0.25},
-                            {"name": "c", "salience": 0.25},
-                            {"name": "d", "salience": 0.2}],
-               "categories": []}
+        nlp = {
+            "entities": [
+                {"name": "a", "salience": 0.3},
+                {"name": "b", "salience": 0.25},
+                {"name": "c", "salience": 0.25},
+                {"name": "d", "salience": 0.2},
+            ],
+            "categories": [],
+        }
         cq = analyze_content_quality(text, ["tema"], nlp)
         self.assertIn("nao_classificavel", cq["flags"])
 
     def test_keyword_nao_saliente(self):
         text = _balanced_text(keyword="aquecedor industrial", kw_times=4)
-        nlp = {"entities": [{"name": "cidade", "salience": 0.3},
-                            {"name": "bairro", "salience": 0.25},
-                            {"name": "rua", "salience": 0.25},
-                            {"name": "telefone", "salience": 0.2}],
-               "categories": [{"name": "/Local", "confidence": 0.8}]}
+        nlp = {
+            "entities": [
+                {"name": "cidade", "salience": 0.3},
+                {"name": "bairro", "salience": 0.25},
+                {"name": "rua", "salience": 0.25},
+                {"name": "telefone", "salience": 0.2},
+            ],
+            "categories": [{"name": "/Local", "confidence": 0.8}],
+        }
         cq = analyze_content_quality(text, ["aquecedor industrial"], nlp)
         self.assertIn("keyword_nao_saliente", cq["flags"])
         self.assertFalse(cq["target_in_salient"])
 
     def test_target_in_salient_true(self):
         text = _balanced_text(keyword="aquecedor industrial", kw_times=4)
-        nlp = {"entities": [{"name": "aquecedor industrial", "salience": 0.4},
-                            {"name": "manutenção", "salience": 0.3},
-                            {"name": "indústria", "salience": 0.3}],
-               "categories": [{"name": "/Business", "confidence": 0.8}]}
+        nlp = {
+            "entities": [
+                {"name": "aquecedor industrial", "salience": 0.4},
+                {"name": "manutenção", "salience": 0.3},
+                {"name": "indústria", "salience": 0.3},
+            ],
+            "categories": [{"name": "/Business", "confidence": 0.8}],
+        }
         cq = analyze_content_quality(text, ["aquecedor industrial"], nlp)
         self.assertTrue(cq["target_in_salient"])
         self.assertNotIn("keyword_nao_saliente", cq["flags"])
@@ -157,8 +168,8 @@ class TestVerdictNlp(unittest.TestCase):
 # Extração de keywords-alvo do GSC
 # ---------------------------------------------------------------------------
 
-class TestTargetKeywords(unittest.TestCase):
 
+class TestTargetKeywords(unittest.TestCase):
     def test_extrai_top_por_impressoes(self):
         rows = [
             {"query": "a", "url": "https://ex.com/p", "impressions": 50},
@@ -181,28 +192,36 @@ class TestTargetKeywords(unittest.TestCase):
 # Orquestrador (seleção de URLs de oportunidade) — fetch mockado, sem rede
 # ---------------------------------------------------------------------------
 
-class TestOrchestrator(unittest.TestCase):
 
+class TestOrchestrator(unittest.TestCase):
     def test_seleciona_e_analisa(self):
         from unittest import mock
+
         import fetchers.content_fetcher as cf
 
         opp = [
             {"url": "https://ex.com/a", "position": 5.0, "impressions": 500, "has_data": True},
-            {"url": "https://ex.com/b", "position": 2.0, "impressions": 900, "has_data": True},  # pos<4 → fora
+            {
+                "url": "https://ex.com/b",
+                "position": 2.0,
+                "impressions": 900,
+                "has_data": True,
+            },  # pos<4 → fora
             {"url": "https://ex.com/c", "position": 8.0, "impressions": 100, "has_data": True},
         ]
         qr = [{"query": "foo", "url": "https://ex.com/a", "impressions": 500}]
         texts = {
             "https://ex.com/a": " ".join(f"w{i}" for i in range(400)),  # longo → não raso
-            "https://ex.com/c": "texto curto",                          # curto → raso
+            "https://ex.com/c": "texto curto",  # curto → raso
         }
         with mock.patch.object(cf, "_fetch_page_text", side_effect=lambda u: texts.get(u)):
-            res = cf.analyze_opportunity_content_quality(opp, "ex.com", query_rows=qr, use_cache=False)
+            res = cf.analyze_opportunity_content_quality(
+                opp, "ex.com", query_rows=qr, use_cache=False
+            )
 
         self.assertIn("https://ex.com/a", res)
         self.assertIn("https://ex.com/c", res)
-        self.assertNotIn("https://ex.com/b", res)          # posição 2 não é oportunidade
+        self.assertNotIn("https://ex.com/b", res)  # posição 2 não é oportunidade
         self.assertEqual(res["https://ex.com/c"]["verdict"], "raso")
 
 
@@ -210,46 +229,72 @@ class TestOrchestrator(unittest.TestCase):
 # Move 2 — acompanhamento conteúdo × posição
 # ---------------------------------------------------------------------------
 
-class TestContentTracking(unittest.TestCase):
 
+class TestContentTracking(unittest.TestCase):
     @staticmethod
     def _hist(snapshots):
         return {"site": "ex.com", "snapshots": snapshots}
 
     def test_baseline_um_snapshot(self):
         from core.content_quality import build_content_tracking
-        hist = self._hist([
-            {"date": "2026-06-01", "urls": {
-                "https://ex.com/a": {"position": 7.0,
-                                     "content": {"verdict": "over_otimizado", "density": 5.0, "words": 800}},
-                "https://ex.com/b": {"position": 4.0},  # sem content → ignorada
-            }},
-        ])
+
+        hist = self._hist(
+            [
+                {
+                    "date": "2026-06-01",
+                    "urls": {
+                        "https://ex.com/a": {
+                            "position": 7.0,
+                            "content": {"verdict": "over_otimizado", "density": 5.0, "words": 800},
+                        },
+                        "https://ex.com/b": {"position": 4.0},  # sem content → ignorada
+                    },
+                },
+            ]
+        )
         t = build_content_tracking(hist)
         self.assertEqual(t["n_content_snapshots"], 1)
         self.assertEqual(len(t["rows"]), 1)
         r = t["rows"][0]
         self.assertEqual(r["url"], "https://ex.com/a")
-        self.assertIsNone(r["position_delta"])       # 1 snapshot → sem delta
+        self.assertIsNone(r["position_delta"])  # 1 snapshot → sem delta
         self.assertEqual(r["last_verdict"], "over_otimizado")
 
     def test_delta_dois_snapshots(self):
         from core.content_quality import build_content_tracking
-        hist = self._hist([
-            {"date": "2026-06-01", "urls": {"https://ex.com/a":
-                {"position": 8.0, "content": {"verdict": "over_otimizado", "density": 6.0, "words": 800}}}},
-            {"date": "2026-06-08", "urls": {"https://ex.com/a":
-                {"position": 5.0, "content": {"verdict": "ok", "density": 2.0, "words": 900}}}},
-        ])
+
+        hist = self._hist(
+            [
+                {
+                    "date": "2026-06-01",
+                    "urls": {
+                        "https://ex.com/a": {
+                            "position": 8.0,
+                            "content": {"verdict": "over_otimizado", "density": 6.0, "words": 800},
+                        }
+                    },
+                },
+                {
+                    "date": "2026-06-08",
+                    "urls": {
+                        "https://ex.com/a": {
+                            "position": 5.0,
+                            "content": {"verdict": "ok", "density": 2.0, "words": 900},
+                        }
+                    },
+                },
+            ]
+        )
         t = build_content_tracking(hist)
         self.assertEqual(t["n_content_snapshots"], 2)
         r = t["rows"][0]
-        self.assertEqual(r["position_delta"], 3.0)   # 8 → 5 = melhorou +3
+        self.assertEqual(r["position_delta"], 3.0)  # 8 → 5 = melhorou +3
         self.assertEqual(r["first_verdict"], "over_otimizado")
         self.assertEqual(r["last_verdict"], "ok")
 
     def test_vazio(self):
         from core.content_quality import build_content_tracking
+
         self.assertEqual(build_content_tracking({"snapshots": []})["rows"], [])
         self.assertEqual(build_content_tracking(None)["rows"], [])
 

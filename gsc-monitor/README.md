@@ -109,16 +109,11 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 ## Testes
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -t .
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-Saída esperada: **82 testes OK** (Fases 4, 5 e 6).
-
-Testes das Fases 1 e 2 (script-based):
-```powershell
-.\.venv\Scripts\python.exe tests\test_storage_phase1.py
-.\.venv\Scripts\python.exe tests\test_cache_phase2.py
-```
+Saída esperada: **154 testes OK**. Toda a suíte roda no pytest (config em
+`pytest.ini`); as chamadas de rede são mockadas, então nenhum teste gasta cota.
 
 ---
 
@@ -151,12 +146,9 @@ gsc-monitor/
   gui/
     main_window.py ← janela Tkinter
     runner.py      ← execução em thread
-  tests/
-    test_storage_phase1.py  ← Fase 1
-    test_cache_phase2.py    ← Fase 2
-    test_analytics_phase4.py ← Fase 4
-    test_phase5.py          ← Fase 5
-    test_phase6.py          ← Fase 6
+  tests/             ← suíte pytest: test_storage, test_cache, test_analytics,
+                       test_ctr, test_classifier, test_sitemap, test_content_quality,
+                       test_position_fetcher, test_phase5 (APIs), test_phase6 (dashboard)
   relatorios/
     {dominio}/     ← arquivos por domínio
       .cache/      ← cache de API

@@ -7,3 +7,8 @@ sentence-transformers>=3.0
 
 # Fallback léxico (TF-IDF) e utilitários. (scikit-learn também vem com sentence-transformers.)
 scikit-learn>=1.4
+
+# Cliente HTTP do backend LLM local (core/llm.py). Dependência DIRETA — declarada
+# aqui para não depender do sentence-transformers puxá-la (modo tfidf-only e a
+# suíte de testes não instalam o ST).
+requests>=2.31

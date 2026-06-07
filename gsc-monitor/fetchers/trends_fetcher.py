@@ -16,8 +16,11 @@ import os
 import re
 import time
 
+from config import TRENDS_GEO
+
 try:
     from pytrends.request import TrendReq
+
     PYTRENDS_AVAILABLE = True
 except ImportError:
     PYTRENDS_AVAILABLE = False
@@ -33,15 +36,17 @@ _SPARSE_THRESHOLD = 8
 # Helpers de cache  (reutiliza _cache_dir, _read_entry, _write_entry, _is_fresh)
 # ---------------------------------------------------------------------------
 
+
 def _normalize_kw(kw: str) -> str:
     """Normaliza keyword para nome de arquivo seguro."""
     return re.sub(r"[^\w]", "_", kw.lower())[:60]
 
 
 def _get_trends_cache(site: str, keyword: str, geo: str) -> "dict | None":
-    from core.cache import _cache_dir, _read_entry, _is_fresh
-    key   = f"trends_{_normalize_kw(keyword)}_{geo}"
-    path  = os.path.join(_cache_dir(site), f"{key}.json")
+    from core.cache import _cache_dir, _is_fresh, _read_entry
+
+    key = f"trends_{_normalize_kw(keyword)}_{geo}"
+    path = os.path.join(_cache_dir(site), f"{key}.json")
     entry = _read_entry(path)
     if entry and _is_fresh(entry, TTL_TRENDS_HOURS):
         return entry["data"]
@@ -50,7 +55,8 @@ def _get_trends_cache(site: str, keyword: str, geo: str) -> "dict | None":
 
 def _set_trends_cache(site: str, keyword: str, geo: str, data: dict) -> None:
     from core.cache import _cache_dir, _write_entry
-    key  = f"trends_{_normalize_kw(keyword)}_{geo}"
+
+    key = f"trends_{_normalize_kw(keyword)}_{geo}"
     path = os.path.join(_cache_dir(site), f"{key}.json")
     _write_entry(path, data)
 
@@ -58,6 +64,7 @@ def _set_trends_cache(site: str, keyword: str, geo: str, data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Extração de top keywords a partir de query_rows
 # ---------------------------------------------------------------------------
+
 
 def top_keywords_from_queries(query_rows: list, max_kw: int = 10) -> list:
     """
@@ -75,6 +82,7 @@ def top_keywords_from_queries(query_rows: list, max_kw: int = 10) -> list:
 # ---------------------------------------------------------------------------
 # Cálculo de tendência
 # ---------------------------------------------------------------------------
+
 
 def _classify_trend(values: list) -> str:
     """
@@ -94,7 +102,7 @@ def _classify_trend(values: list) -> str:
     if len(vals) < 6:
         return "stable"
     first3 = sum(vals[:3]) / 3
-    last3  = sum(vals[-3:]) / 3
+    last3 = sum(vals[-3:]) / 3
     if first3 == 0:
         return "rising" if last3 > 0 else "stable"
     ratio = last3 / first3
@@ -131,8 +139,8 @@ def _compute_trend_data(vals: list) -> dict:
     non_zero_count = sum(1 for v in int_vals if v > 0)
 
     return {
-        "trend":  _classify_trend(int_vals),
-        "peak":   max(int_vals),
+        "trend": _classify_trend(int_vals),
+        "peak": max(int_vals),
         "latest": latest,
         "values": int_vals,
         "sparse": non_zero_count < _SPARSE_THRESHOLD,
@@ -143,10 +151,11 @@ def _compute_trend_data(vals: list) -> dict:
 # Consulta principal
 # ---------------------------------------------------------------------------
 
+
 def fetch_trends(
     keywords: list,
     site: str,
-    geo: str = "BR",
+    geo: str = TRENDS_GEO,
     use_cache: bool = True,
     delay: float = 1.5,
 ) -> dict:
@@ -201,12 +210,18 @@ def fetch_trends(
         print(f"[trends] Buscando tendência: '{kw}'...")
         try:
             pytrends.build_payload(
-                [kw], cat=0, timeframe="today 12-m", geo=geo, gprop="",
+                [kw],
+                cat=0,
+                timeframe="today 12-m",
+                geo=geo,
+                gprop="",
             )
             df = pytrends.interest_over_time()
 
             if df.empty or kw not in df.columns:
-                print(f"[trends] Sem dados no Google Trends para '{kw}' (volume muito baixo para essa região)")
+                print(
+                    f"[trends] Sem dados no Google Trends para '{kw}' (volume muito baixo para essa região)"
+                )
                 data = {"trend": "stable", "peak": 0, "latest": 0, "values": [], "sparse": False}
             else:
                 data = _compute_trend_data(df[kw].tolist())
@@ -234,8 +249,8 @@ def print_trends(trends_data: dict) -> None:
     print("  Tendências Google Trends (últimos 12 meses)")
     print(f"{'─' * 72}")
     for kw, data in trends_data.items():
-        arrow      = ARROW.get(data["trend"], "→")
-        trend_lbl  = LABEL.get(data["trend"], "Estável")
+        arrow = ARROW.get(data["trend"], "→")
+        trend_lbl = LABEL.get(data["trend"], "Estável")
 
         if data.get("peak") == 0:
             note = "  ⚠ sem dados no Trends"
@@ -244,5 +259,7 @@ def print_trends(trends_data: dict) -> None:
         else:
             note = ""
 
-        print(f"  {arrow} {kw:<38}  {trend_lbl:<12}  pico:{data['peak']:>3}  atual:{data['latest']:>3}{note}")
+        print(
+            f"  {arrow} {kw:<38}  {trend_lbl:<12}  pico:{data['peak']:>3}  atual:{data['latest']:>3}{note}"
+        )
     print(f"{'─' * 72}\n")

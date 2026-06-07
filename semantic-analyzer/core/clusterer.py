@@ -56,6 +56,7 @@ def cluster_by_threshold(sim: np.ndarray, threshold: float) -> list:
 
 def _groups_from_assignments(assign) -> list:
     from collections import defaultdict
+
     g = defaultdict(list)
     for i, a in enumerate(assign):
         g[int(a)].append(i)
@@ -71,9 +72,12 @@ def cluster_agglomerative(embeddings, threshold: float, linkage: str = "complete
     para detectar grupos de near-duplicates em conteúdo homogêneo.
     """
     from sklearn.cluster import AgglomerativeClustering
+
     emb = normalize(embeddings)
     model = AgglomerativeClustering(
-        n_clusters=None, metric="cosine", linkage=linkage,
+        n_clusters=None,
+        metric="cosine",
+        linkage=linkage,
         distance_threshold=1.0 - threshold,
     )
     return _groups_from_assignments(model.fit_predict(emb))
@@ -85,7 +89,7 @@ def cluster_cohesion(indices: list, sim: np.ndarray) -> float:
         return 1.0
     sub = sim[np.ix_(indices, indices)]
     n = len(indices)
-    total = sub.sum() - np.trace(sub)          # exclui a diagonal (auto-similaridade)
+    total = sub.sum() - np.trace(sub)  # exclui a diagonal (auto-similaridade)
     return float(total / (n * (n - 1)))
 
 
@@ -98,8 +102,13 @@ def _representative(indices: list, labels: list, sim: np.ndarray):
     return labels[indices[int(np.argmax(scores))]]
 
 
-def build_clusters(embeddings, labels: list, threshold: float = 0.85,
-                   method: str = "threshold", linkage: str = "complete"):
+def build_clusters(
+    embeddings,
+    labels: list,
+    threshold: float = 0.85,
+    method: str = "threshold",
+    linkage: str = "complete",
+):
     """
     Pipeline completo: embeddings + labels -> clusters ordenados por tamanho.
 
@@ -121,13 +130,15 @@ def build_clusters(embeddings, labels: list, threshold: float = 0.85,
         groups = cluster_by_threshold(sim, threshold)
     result = []
     for g in groups:
-        result.append({
-            "size":           len(g),
-            "cohesion":       round(cluster_cohesion(g, sim), 3),
-            "representative": _representative(g, labels, sim),
-            "members":        [labels[i] for i in g],
-            "indices":        g,
-        })
+        result.append(
+            {
+                "size": len(g),
+                "cohesion": round(cluster_cohesion(g, sim), 3),
+                "representative": _representative(g, labels, sim),
+                "members": [labels[i] for i in g],
+                "indices": g,
+            }
+        )
     result.sort(key=lambda c: (-c["size"], -c["cohesion"]))
     return result, sim
 

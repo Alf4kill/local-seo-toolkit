@@ -1,6 +1,8 @@
 # Dependências apenas para desenvolvimento e testes.
 # Instale com: pip install -r requirements-dev.txt
 #
-# (unittest é da biblioteca padrão do Python — não há pacotes externos necessários
-# para rodar os testes. Este arquivo existe para adicionar ferramentas como
-# linters ou formatadores no futuro.)
+# pytest é o runner único da suíte (config em pytest.ini); ruff faz lint + format
+# (config em ../ruff.toml). As deps de runtime ficam em requirements.txt.
+
+pytest>=8.0
+ruff==0.15.16
