@@ -91,6 +91,44 @@ AIzaSy...sua_chave_aqui
 .\.venv\Scripts\python.exe main.py --site www.exemplo.com.br --limit 10
 ```
 
+### CLI — Crawl Budget (logs do servidor)
+
+Análise **100% local** do access log do servidor (Apache/Nginx) — **sem cota de
+API**. Mede o comportamento real do Googlebot: frequência de crawl por URL,
+páginas do sitemap **nunca rastreadas**, *money pages* com muitas impressões mas
+**zero crawl**, e desperdício em URLs com parâmetro / erros 4xx.
+
+```powershell
+.\.venv\Scripts\python.exe logs.py --site www.exemplo.com.br --logs access.log
+```
+
+| Flag | Descrição |
+|------|-----------|
+| `--site` | Domínio analisado (obrigatório) |
+| `--logs` | Um ou mais arquivos de log (aceita `.gz`) — obrigatório |
+| `--format` | `combined` ou `common` (padrão: detecta automaticamente) |
+| `--gsc` | Cruza com o último `*_posicao.json` salvo (money pages subcrawladas) |
+| `--no-sitemap` | Não busca o sitemap (pula a lista "nunca rastreadas") |
+| `--verify-googlebot` | Confirma cada IP por DNS reverso+direto (lento; elimina bot falsificado) |
+| `--top N` | Quantas linhas mostrar nas tabelas "top" |
+
+> **Honestidade analítica:** sem `--verify-googlebot`, a detecção do bot é só por
+> User-Agent — que é **falsificável**. O relatório rotula isso explicitamente
+> ("por UA, não verificado") em vez de afirmar certeza.
+
+#### Como exportar o access log para a sua máquina
+
+O log fica **no servidor**; a análise roda **local**. Baixe o arquivo antes:
+
+- **Plesk:** *Sites & Domains → (domínio) → Logs* — baixe `access_log` (ou os
+  rotacionados `*.processed` / `*.gz`). Via SSH/SFTP eles ficam em
+  `/var/www/vhosts/system/{dominio}/logs/`.
+- **Apache padrão:** `/var/log/apache2/access.log*`
+- **Nginx padrão:** `/var/log/nginx/access.log*`
+
+Copie para a máquina local e aponte `--logs` para o arquivo. Os logs **não** são
+versionados (`*.log` está no `.gitignore`).
+
 ---
 
 ## Relatórios gerados
@@ -103,6 +141,8 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 | `YYYY-MM-DD_posicao.xlsx` | Excel com abas: Resumo, Posicionamento, Oportunidades CTR, Histórico, Trends, Canibalização, Sem Impressões |
 | `dashboard.html` | Dashboard interativo com gráficos Chart.js |
 | `YYYY-MM-DD_indexacao.json` | Dados brutos de indexação |
+| `YYYY-MM-DD_crawl.html` | Dashboard de crawl budget (Googlebot via access log) |
+| `YYYY-MM-DD_crawl.json/.csv/.txt` | Crawl por URL, nunca-rastreadas e money pages subcrawladas |
 
 ---
 
@@ -112,7 +152,7 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Saída esperada: **154 testes OK**. Toda a suíte roda no pytest (config em
+Saída esperada: **202 testes OK**. Toda a suíte roda no pytest (config em
 `pytest.ini`); as chamadas de rede são mockadas, então nenhum teste gasta cota.
 
 ---
@@ -124,7 +164,8 @@ gsc-monitor/
   app.py          ← entrada GUI
   posicao.py      ← CLI: posicionamento
   main.py         ← CLI: indexação
-  config.py       ← BASE_DIR centralizado
+  logs.py         ← CLI: crawl budget (Googlebot via access log, local)
+  config.py       ← BASE_DIR + constantes transversais
   core/           ← lógica de negócio
     auth.py       ← OAuth2 Google
     cache.py      ← cache JSON por domínio
@@ -132,6 +173,7 @@ gsc-monitor/
     analytics.py  ← health score, páginas sem impressões, canibalização
     classifier.py ← mapeamento verdict → categoria
     sitemap.py    ← parser de sitemap.xml
+    log_analyzer.py ← parser/agregação de access log (crawl budget; puro)
   fetchers/       ← integração com APIs externas
     inspector.py         ← URL Inspection API
     position_fetcher.py  ← Search Analytics API
@@ -143,12 +185,14 @@ gsc-monitor/
     position_reporter.py ← relatórios de posicionamento
     excel_reporter.py    ← geração de Excel
     html_reporter.py     ← dashboard HTML
+    crawl_reporter.py    ← relatório de crawl budget (HTML/TXT)
   gui/
     main_window.py ← janela Tkinter
     runner.py      ← execução em thread
   tests/             ← suíte pytest: test_storage, test_cache, test_analytics,
                        test_ctr, test_classifier, test_sitemap, test_content_quality,
-                       test_position_fetcher, test_phase5 (APIs), test_phase6 (dashboard)
+                       test_position_fetcher, test_log_analyzer, test_crawl_reporter,
+                       test_phase5 (APIs), test_phase6 (dashboard)
   relatorios/
     {dominio}/     ← arquivos por domínio
       .cache/      ← cache de API
@@ -164,3 +208,4 @@ gsc-monitor/
 - `pytrends` é necessário para `--trends`: `pip install pytrends` (já incluso no `requirements.txt`).
 - O dashboard HTML é gerado automaticamente a cada execução de posicionamento.
 - A flag `--nlp` consome cota da Cloud Natural Language API (2 unidades por URL, gratuito até 5.000/mês).
+- `logs.py` analisa o access log do servidor **localmente** (crawl budget do Googlebot), **sem cota de API**; aceita `.gz` e múltiplos arquivos. Combine com `--gsc` (após rodar `posicao.py`) para cruzar crawl × impressões.

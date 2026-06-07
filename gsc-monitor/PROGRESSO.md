@@ -238,7 +238,8 @@ gsc-monitor/
 
 **Testes:** `test_phase6.py` — 34/34 testes passaram
 **Total acumulado (à época):** 11+9 (F1-F2) + 21 (F4) + 27 (F5) + 34 (F6) = 102 testes.
-Hoje a suíte roda com `py -m pytest` (runner único) e soma **154 testes**.
+Hoje a suíte roda com `py -m pytest` (runner único) e soma **202 testes**
+(inclui o analisador de crawl budget — ver "Extensão" abaixo).
 
 ---
 
@@ -270,4 +271,30 @@ openpyxl>=3.1.0
 9. **API key Google Cloud:** env `GOOGLE_API_KEY` ou arquivo `google_api_key.txt` ou campo na GUI
 10. **pytrends:** requer `pip install pytrends`; sem ela `--trends` imprime instrução e pula
 11. **Dashboard HTML:** gerado automaticamente em `relatorios/{dominio}/dashboard.html` a cada execução de posicionamento; botão "Dashboard" na GUI abre no navegador
-12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 154 testes).
+12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 202 testes).
+
+---
+
+## Extensão — Crawl-budget analyzer (`logs.py`) ✅
+**Arquivos criados:** `core/log_analyzer.py`, `reporters/crawl_reporter.py`,
+`logs.py`, `tests/test_log_analyzer.py`, `tests/test_crawl_reporter.py`
+**Arquivos modificados:** `config.py`, `core/storage.py`
+
+**O que faz:** análise **100% local, sem cota de API**, do access log do servidor
+(Apache/Nginx, formato combined/common). Mede o comportamento real do Googlebot:
+- frequência de crawl por URL (hits, último acesso, mix de status, bytes);
+- split bot × humano (com **aviso de que UA é falsificável**);
+- **páginas do sitemap nunca rastreadas** no período (reusa `sitemap.fetch_urls`);
+- **money pages subcrawladas** — muitas impressões no GSC, zero crawl (`--gsc`,
+  via `storage.load_latest_position_report`);
+- desperdício de crawl em URLs com parâmetro e em erros 4xx.
+
+**Honestidade:** detecção por User-Agent é rotulada como não verificada;
+`--verify-googlebot` confirma por DNS reverso+direto (opt-in, lento).
+
+**Núcleo puro e testado:** `analyze_lines()` faz toda a agregação em memória
+(streamável; `analyze_logs()` abre arquivos, inclui `.gz`). 48 testes novos
+(parsing, timestamp independente de locale, bot real × falsificado, DNS mockado,
+cruzamentos, escaping HTML). Saídas em `relatorios/{dom}/{data}_crawl.json/.txt/.csv/.html`.
+
+**Follow-up barato:** aba `.xlsx` nativa (hoje só CSV).
