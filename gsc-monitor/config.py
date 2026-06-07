@@ -55,3 +55,53 @@ GSC_DELAY_DAYS = 3  # o GSC atrasa ~2-3 dias; end_date = hoje - este valor
 TRENDS_GEO = "BR"  # geo padrão do Google Trends (fetchers/trends_fetcher.py)
 INSPECT_DELAY = 0.5  # s entre chamadas da URL Inspection (cota 2000/dia)
 NLP_DELAY = 0.5  # s entre chamadas da Cloud Natural Language API
+
+# ---------------------------------------------------------------------------
+# Análise de logs de servidor (core/log_analyzer.py, logs.py).
+# 100% local, sem cota: lê o access log e mede o comportamento real do
+# Googlebot (frequência de crawl, status, páginas nunca rastreadas, money pages
+# subcrawladas). É o encaixe mais forte com a restrição "local-only, free tier".
+# ---------------------------------------------------------------------------
+
+# User-agents tratados como Googlebot (lowercase; match por substring no UA).
+# Cobre o crawler principal + bots auxiliares do Google que também gastam crawl
+# budget. ATENÇÃO: o UA é FALSIFICÁVEL — qualquer um pode mandar "Googlebot" no
+# header. A verificação confiável é por DNS reverso/direto (verify_googlebot),
+# oferecida como opt-in lento. Sem ela, o relatório rotula a detecção como
+# "por UA (não verificado)" — honestidade analítica.
+GOOGLEBOT_UA_PATTERNS = [
+    "googlebot",
+    "storebot-google",
+    "google-inspectiontool",
+    "googleother",
+    "google-extended",
+    "adsbot-google",
+    "mediapartners-google",
+]
+
+# Formatos de access log suportados (regex com grupos nomeados). A ordem importa:
+# o parser tenta "combined" primeiro e cai para "common". Cobre Apache e Nginx,
+# que usam o mesmo "combined log format" por padrão. Só o "combined" traz o
+# User-Agent — necessário para identificar o Googlebot; logs "common" (sem UA)
+# rendem só agregados de path/status, sem separar bot de humano.
+LOG_FORMATS = {
+    "combined": (
+        r"(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] "
+        r'"(?P<method>[A-Z]+) (?P<path>\S+)[^"]*" '
+        r"(?P<status>\d{3}) (?P<bytes>\S+) "
+        r'"(?P<ref>[^"]*)" "(?P<ua>[^"]*)"'
+    ),
+    "common": (
+        r"(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] "
+        r'"(?P<method>[A-Z]+) (?P<path>\S+)[^"]*" '
+        r"(?P<status>\d{3}) (?P<bytes>\S+)"
+    ),
+}
+
+# Cruzamento com o GSC: só sinalizamos uma "money page subcrawlada" se a URL
+# tiver pelo menos este volume de impressões no período (senão não é uma página
+# que de fato importa para o tráfego).
+UNDERCRAWLED_MIN_IMPRESSIONS = 1000
+
+# Quantas linhas exibir nas tabelas "top" do relatório de crawl (terminal/HTML).
+CRAWL_TOP_N = 25
