@@ -60,7 +60,12 @@ py posicao.py --site www.exemplo.com.br --excel --queries --content --nlp
 # CLI indexação (cuidado com a cota 2.000/dia — use --limit ao testar)
 py main.py --site www.exemplo.com.br --limit 10
 
-# Testes  (154 testes; rode da pasta gsc-monitor/)
+# CLI crawl budget (100% local, SEM cota — lê o access log do servidor)
+py logs.py --site www.exemplo.com.br --logs access.log [access.log.1.gz ...]
+#   --gsc  cruza com o último _posicao.json (money pages subcrawladas)
+#   --verify-googlebot  confirma o bot por DNS (lento)   --no-sitemap  --format
+
+# Testes  (202 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 
@@ -81,6 +86,7 @@ core/        lógica pura (sem rede/IO quando possível)
   cache.py           cache JSON por domínio em relatorios/{dom}/.cache/
   storage.py         IO de arquivos, historico_posicao.json
   sitemap.py         fetch/parse de sitemap.xml (+ robots fallback)
+  log_analyzer.py    parser/agregação de access log (crawl budget; puro, sem rede)
   classifier.py      verdict da inspeção → categoria
   analytics.py       health score, canibalização, páginas sem impressões
   content_quality.py [Move 1/2] analyzer puro + build_content_tracking
@@ -95,6 +101,7 @@ reporters/   geração de saída
   position_reporter.py / reporter.py   relatórios
   excel_reporter.py    Excel (openpyxl)
   html_reporter.py     dashboard HTML (Chart.js via CDN)
+  crawl_reporter.py    relatório de crawl budget (HTML autocontido + TXT)
   nlp_report_generator.py
 gui/         main_window.py (Tkinter) + runner.py (thread + QueueStream)
 ```
@@ -184,6 +191,15 @@ loop do Move 2. Baseline de 8 URLs gravado em 2026-06-02.
 ---
 
 ## 6. Opções de refino e upgrade (próximos passos)
+
+> **Já implementado — Crawl budget (logs.py):** `logs.py` + `core/log_analyzer.py`
+> analisam o access log do servidor **localmente, sem cota**: frequência de crawl
+> do Googlebot por URL, sitemap nunca rastreado, *money pages* subcrawladas
+> (`--gsc`), e desperdício em 404/parâmetros. Detecção por UA com aviso de
+> falsificabilidade; `--verify-googlebot` confirma por DNS. É **distinto** da
+> "detecção de órfãs REAL" abaixo (links internos), que continua pendente.
+> *Follow-up barato:* aba `.xlsx` nativa do crawl (hoje só CSV) — espelhar um
+> `_build_sheet_*` do `excel_reporter.py`.
 
 ### Quick wins (baixo esforço, alto valor)
 - **Densidade vs keyword do slug / n-grama mais repetido.** Hoje a densidade usa
