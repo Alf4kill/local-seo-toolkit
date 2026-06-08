@@ -132,25 +132,34 @@ class TestBotDetection:
         assert la.is_bot(HUMAN) is False
 
 
-class TestVerifyGooglebot:
-    def test_legitimo(self, monkeypatch):
+class TestClassifyGooglebotIp:
+    def test_verified(self, monkeypatch):
         ip = "66.249.66.1"
         monkeypatch.setattr(la, "_reverse_dns", lambda _: "crawl-66-249-66-1.googlebot.com")
         monkeypatch.setattr(la, "_forward_dns", lambda _: [ip])
-        assert la.verify_googlebot(ip) is True
+        assert la.classify_googlebot_ip(ip) == "verified"
+        assert la.verify_googlebot(ip) is True  # wrapper de compatibilidade
 
-    def test_host_nao_google(self, monkeypatch):
+    def test_forged_host_nao_google_que_resolve(self, monkeypatch):
         monkeypatch.setattr(la, "_reverse_dns", lambda _: "spam.evil.com")
-        assert la.verify_googlebot("1.2.3.4") is False
+        monkeypatch.setattr(la, "_forward_dns", lambda _: ["1.2.3.4"])  # host real
+        assert la.classify_googlebot_ip("1.2.3.4") == "forged"
 
-    def test_forward_nao_bate(self, monkeypatch):
+    def test_forged_ptr_google_mas_forward_nao_bate(self, monkeypatch):
         monkeypatch.setattr(la, "_reverse_dns", lambda _: "crawl.googlebot.com")
         monkeypatch.setattr(la, "_forward_dns", lambda _: ["9.9.9.9"])
-        assert la.verify_googlebot("66.249.66.1") is False
+        assert la.classify_googlebot_ip("66.249.66.1") == "forged"
 
-    def test_sem_ptr(self, monkeypatch):
+    def test_unverifiable_sem_ptr(self, monkeypatch):
+        # Caso típico atrás de CDN/proxy: IP logado é do proxy, sem PTR.
         monkeypatch.setattr(la, "_reverse_dns", lambda _: None)
-        assert la.verify_googlebot("66.249.66.1") is False
+        assert la.classify_googlebot_ip("104.22.42.151") == "unverifiable"
+        assert la.verify_googlebot("104.22.42.151") is False
+
+    def test_unverifiable_ptr_nao_google_que_nao_resolve(self, monkeypatch):
+        monkeypatch.setattr(la, "_reverse_dns", lambda _: "ghost.invalido")
+        monkeypatch.setattr(la, "_forward_dns", lambda _: [])
+        assert la.classify_googlebot_ip("1.2.3.4") == "unverifiable"
 
 
 class TestAnalyzeLines:
@@ -269,25 +278,55 @@ class TestAnalyzeLines:
         assert res["never_crawled"] is None
         assert res["undercrawled_money"] is None
 
-    def test_resolve_googlebot_separa_falsificado(self, monkeypatch):
-        # IP real verifica; IP falso não.
-        monkeypatch.setattr(la, "verify_googlebot", lambda ip: ip == "66.249.66.1")
+    def test_resolve_classifica_verified_forged_unverifiable(self, monkeypatch):
+        status = {"66.249.66.1": "verified", "6.6.6.6": "forged", "104.22.42.151": "unverifiable"}
+        monkeypatch.setattr(la, "classify_googlebot_ip", lambda ip: status.get(ip, "forged"))
         lines = [
-            line(ip="66.249.66.1", path="/ok"),  # real
-            line(ip="6.6.6.6", path="/fake"),  # UA diz Googlebot, DNS nega
+            line(ip="66.249.66.1", path="/ok"),  # verified
+            line(ip="6.6.6.6", path="/forjado"),  # forged (impostor real)
+            line(ip="104.22.42.151", path="/cdn"),  # unverifiable (CDN: sem PTR)
         ]
         res = la.analyze_lines(lines, resolve_googlebot=True)
+        t = res["traffic"]
         assert res["resolved"] is True
-        assert res["traffic"]["googlebot"] == 1
-        assert res["traffic"]["spoofed_googlebot"] == 1
-        assert res["traffic"]["humans"] == 0
-        assert res["traffic"]["other_bots"] == 0
+        assert t["googlebot"] == 2  # verified + unverifiable agregam como Googlebot
+        assert t["googlebot_verified"] == 1
+        assert t["googlebot_unverifiable"] == 1
+        assert t["spoofed_googlebot"] == 1  # só o forjado
+        assert t["humans"] == 0 and t["other_bots"] == 0
+        # 1 verified vs 1 unverifiable -> não é maioria estrita -> não suspeita CDN
+        assert res["behind_cdn_suspected"] is False
+
+    def test_behind_cdn_suspected_quando_unverifiable_domina(self, monkeypatch):
+        monkeypatch.setattr(la, "classify_googlebot_ip", lambda ip: "unverifiable")
+        lines = [line(ip="104.22.42.151", path="/a"), line(ip="108.162.245.10", path="/b")]
+        res = la.analyze_lines(lines, resolve_googlebot=True)
+        assert res["traffic"]["googlebot"] == 2
+        assert res["traffic"]["googlebot_unverifiable"] == 2
+        assert res["traffic"]["spoofed_googlebot"] == 0
+        assert res["behind_cdn_suspected"] is True
 
     def test_sem_resolve_conta_ambos_como_googlebot(self):
         lines = [line(ip="66.249.66.1", path="/ok"), line(ip="6.6.6.6", path="/fake")]
         res = la.analyze_lines(lines, resolve_googlebot=False)
         assert res["traffic"]["googlebot"] == 2
         assert res["traffic"]["spoofed_googlebot"] == 0
+        assert res["behind_cdn_suspected"] is False
+
+
+class TestPrintCrawlReport:
+    def test_saida_e_ascii_inclui_aviso_cdn(self, capsys, monkeypatch):
+        # print_crawl_report e codigo de biblioteca: precisa ser ASCII puro
+        # (seguro em console cp1252). Exercita tambem o caminho do aviso de CDN.
+        monkeypatch.setattr(la, "classify_googlebot_ip", lambda ip: "unverifiable")
+        res = la.analyze_lines(
+            [line(ip="104.22.42.151", path="/a"), line(ip="1.2.3.4", path="/b", ua=HUMAN)],
+            resolve_googlebot=True,
+        )
+        la.print_crawl_report(res)
+        out = capsys.readouterr().out
+        out.encode("ascii")  # levanta UnicodeEncodeError se houver caractere fora de ASCII
+        assert "AVISO" in out and "CF-Connecting-IP" in out
 
 
 class TestAnalyzeLogs:

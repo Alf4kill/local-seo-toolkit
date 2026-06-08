@@ -183,20 +183,37 @@ def _forward_dns(host: str) -> list[str]:
         return []
 
 
-def verify_googlebot(ip: str) -> bool:
+def classify_googlebot_ip(ip: str) -> str:
     """
-    Confirma se o IP é realmente do Googlebot por DNS reverso + direto:
-      IP -> PTR (deve terminar em .googlebot.com/.google.com/.googleusercontent.com)
-         -> resolve o host de volta e confere se inclui o IP.
-    Faz DNS (lento) — use como opt-in. Retorna False em qualquer falha.
+    Classifica um IP cujo User-Agent diz Googlebot, por DNS reverso + direto:
+
+      "verified"     — PTR termina em domínio do Google E o forward resolve de
+                       volta para o IP (é mesmo o Googlebot).
+      "forged"       — há PTR que resolve, mas para um host NÃO-Google (ou o PTR
+                       diz Google e o forward não bate): impostor real.
+      "unverifiable" — sem PTR, ou o host do PTR não resolve. MUITO comum atrás
+                       de CDN/proxy (Cloudflare etc.): o IP logado é o do proxy,
+                       não o do bot. NÃO é prova de fraude — apenas não dá para
+                       confirmar por IP.
+
+    Faz DNS (lento) — use como opt-in. Distinguir "unverifiable" de "forged" é
+    questão de honestidade: chamar Googlebot proxied de "falso" seria um
+    veredito confiante e errado.
     """
     host = _reverse_dns(ip)
     if not host:
-        return False
+        return "unverifiable"
     host_l = host.lower().rstrip(".")
-    if not host_l.endswith(_GOOGLE_HOSTS):
-        return False
-    return ip in _forward_dns(host_l)
+    if host_l.endswith(_GOOGLE_HOSTS):
+        return "verified" if ip in _forward_dns(host_l) else "forged"
+    # PTR para host não-Google: só é "forged" se esse host de fato resolve
+    # (impostor com DNS válido); senão é apenas não verificável.
+    return "forged" if _forward_dns(host_l) else "unverifiable"
+
+
+def verify_googlebot(ip: str) -> bool:
+    """Compat: True somente quando classify_googlebot_ip(ip) == 'verified'."""
+    return classify_googlebot_ip(ip) == "verified"
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +245,7 @@ def analyze_lines(
     lines_total = lines_parsed = lines_malformed = 0
     has_ua = False
     gb_hits = other_bot = humans = spoofed = 0
+    gb_verified = gb_unverifiable = 0
 
     # Agregação por caminho (só Googlebot).
     paths: dict[str, dict] = {}
@@ -240,11 +258,11 @@ def analyze_lines(
     dt_min: datetime | None = None
     dt_max: datetime | None = None
 
-    verify_cache: dict[str, bool] = {}
+    verify_cache: dict[str, str] = {}
 
-    def _is_real_googlebot(ip: str) -> bool:
+    def _classify(ip: str) -> str:
         if ip not in verify_cache:
-            verify_cache[ip] = verify_googlebot(ip)
+            verify_cache[ip] = classify_googlebot_ip(ip)
         return verify_cache[ip]
 
     for line in lines:
@@ -269,9 +287,14 @@ def analyze_lines(
         gb = False
         if ua_is_gb:
             if resolve_googlebot:
-                if _is_real_googlebot(rec["ip"]):
+                status = _classify(rec["ip"])
+                if status == "verified":
                     gb = True
-                else:
+                    gb_verified += 1
+                elif status == "unverifiable":
+                    gb = True  # provável CDN/proxy — conta como Googlebot, mas marcado
+                    gb_unverifiable += 1
+                else:  # "forged" — impostor comprovado
                     spoofed += 1
             else:
                 gb = True
@@ -339,10 +362,18 @@ def analyze_lines(
         },
         "traffic": {
             "googlebot": gb_hits,
+            "googlebot_verified": gb_verified,
+            "googlebot_unverifiable": gb_unverifiable,
             "other_bots": other_bot,
             "humans": humans,
             "spoofed_googlebot": spoofed,
         },
+        # Heurística honesta: se, ao verificar, a maioria dos IPs do Googlebot não
+        # tem PTR, o log provavelmente registra o IP do CDN/proxy (Cloudflare etc.),
+        # não o do bot — verificação por IP indisponível (não é fraude).
+        "behind_cdn_suspected": bool(
+            resolve_googlebot and gb_unverifiable > gb_verified and gb_unverifiable > 0
+        ),
         "googlebot": {
             "total_hits": gb_hits,
             "unique_paths": len(paths),
@@ -458,11 +489,25 @@ def print_crawl_report(result: dict) -> None:
         print("  AVISO: log sem User-Agent (formato 'common') — bot x humano indisponivel.")
     print(dash)
     print(f"  Googlebot      : {traffic['googlebot']:,} hits")
+    if result["resolved"]:
+        print(f"    - verificados por DNS : {traffic.get('googlebot_verified', 0):,}")
+        print(
+            f"    - nao verificaveis    : {traffic.get('googlebot_unverifiable', 0):,} "
+            "(sem PTR; provavel CDN/proxy)"
+        )
     print(f"  Outros bots    : {traffic['other_bots']:,}")
     print(f"  Humanos        : {traffic['humans']:,}")
     if traffic["spoofed_googlebot"]:
         print(
-            f"  Googlebot FALSO: {traffic['spoofed_googlebot']:,} (UA dizia Googlebot; DNS negou)"
+            f"  Googlebot FORJADO: {traffic['spoofed_googlebot']:,} "
+            "(PTR resolve p/ host NAO-Google — impostor real)"
+        )
+    if result.get("behind_cdn_suspected"):
+        print(
+            "  AVISO: a maioria dos IPs do Googlebot nao tem DNS reverso - o log parece\n"
+            "         registrar o IP do CDN/proxy (ex.: Cloudflare), nao o do bot. A\n"
+            "         verificacao por IP fica indisponivel (NAO e fraude). Registre o IP\n"
+            "         real do visitante (header CF-Connecting-IP) para poder verificar."
         )
     print(dash)
 

@@ -115,6 +115,12 @@ páginas do sitemap **nunca rastreadas**, *money pages* com muitas impressões m
 > **Honestidade analítica:** sem `--verify-googlebot`, a detecção do bot é só por
 > User-Agent — que é **falsificável**. O relatório rotula isso explicitamente
 > ("por UA, não verificado") em vez de afirmar certeza.
+>
+> **Atrás de CDN (Cloudflare etc.):** o access log normalmente registra o IP do
+> *proxy*, não o do bot. Nesse caso `--verify-googlebot` marca os hits como
+> **"não verificáveis"** (sem PTR) — **não** como fraude — e o relatório avisa.
+> Para verificar de fato, configure o log para gravar o IP real do visitante
+> (header `CF-Connecting-IP`).
 
 #### Como exportar o access log para a sua máquina
 

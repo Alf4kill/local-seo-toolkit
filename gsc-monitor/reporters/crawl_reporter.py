@@ -55,12 +55,23 @@ def build_crawl_txt_lines(result: dict, domain: str, date: str) -> list[str]:
         out.append("  AVISO: log sem User-Agent ('common') - split bot x humano indisponivel.")
     out.append(dash)
     out.append(f"  Googlebot      : {_fmt(traffic['googlebot'])} hits")
+    if result.get("resolved"):
+        out.append(f"    - verificados por DNS : {_fmt(traffic.get('googlebot_verified', 0))}")
+        out.append(
+            f"    - nao verificaveis    : {_fmt(traffic.get('googlebot_unverifiable', 0))}"
+            " (sem PTR; provavel CDN)"
+        )
     out.append(f"  Outros bots    : {_fmt(traffic['other_bots'])}")
     out.append(f"  Humanos        : {_fmt(traffic['humans'])}")
     if traffic["spoofed_googlebot"]:
         out.append(
-            f"  Googlebot FALSO: {_fmt(traffic['spoofed_googlebot'])} (UA mentiu; DNS negou)"
+            f"  Googlebot FORJADO: {_fmt(traffic['spoofed_googlebot'])}"
+            " (PTR resolve p/ host NAO-Google)"
         )
+    if result.get("behind_cdn_suspected"):
+        out.append("  AVISO: IPs do Googlebot sem PTR - log registra o IP do CDN/proxy")
+        out.append("         (ex.: Cloudflare), nao o do bot. Verificacao por IP indisponivel;")
+        out.append("         registre o IP real (header CF-Connecting-IP) para verificar.")
     out.append(dash)
     out.append(f"  URLs distintas rastreadas: {_fmt(gb['unique_paths'])}")
     if gb["status_mix"]:
@@ -150,8 +161,11 @@ def _sec_resumo(result: dict) -> str:
         _stat(t["other_bots"], "Outros bots"),
         _stat(result["lines_malformed"], "Linhas ignoradas"),
     ]
+    if result.get("resolved"):
+        cards.insert(1, _stat(t.get("googlebot_verified", 0), "Verificados DNS"))
+        cards.insert(2, _stat(t.get("googlebot_unverifiable", 0), "Nao verificaveis"))
     if t["spoofed_googlebot"]:
-        cards.append(_stat(t["spoofed_googlebot"], "Googlebot falso"))
+        cards.append(_stat(t["spoofed_googlebot"], "Googlebot forjado"))
 
     dr = result["date_range"]
     periodo = (
@@ -167,6 +181,14 @@ def _sec_resumo(result: dict) -> str:
         "O User-Agent é falsificável; a verificação confiável é por DNS reverso+direto "
         "(<code>--verify-googlebot</code>).</div>"
     )
+    if result.get("behind_cdn_suspected"):
+        banner += (
+            '<div class="banner warn">A maioria dos IPs do Googlebot não tem DNS reverso — '
+            "o log provavelmente registra o IP do <b>CDN/proxy</b> (ex.: Cloudflare), não o "
+            "do bot. A verificação por IP fica <b>indisponível</b> (isto <b>não</b> é fraude). "
+            "Para verificar, registre o IP real do visitante no log "
+            "(header <code>CF-Connecting-IP</code>).</div>"
+        )
     if not result["has_user_agent"]:
         banner += (
             '<div class="banner warn">Log sem User-Agent (formato <code>common</code>): '
