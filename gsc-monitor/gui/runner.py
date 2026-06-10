@@ -126,6 +126,7 @@ def _run_position(
     use_cache: bool,
     do_queries: bool = False,
     do_trends: bool = False,
+    trends_source: str = "gsc",
     do_nlp: bool = False,
     do_content: bool = False,
     api_key: "str | None" = None,
@@ -139,12 +140,14 @@ def _run_position(
         save_position_report, save_position_txt,
         save_excel_report, save_csv_posicao,
         append_historico_posicao, load_historico_posicao, load_latest_consolidated,
-        save_dashboard, save_nlp_report,
+        save_dashboard, save_nlp_report, save_redirects_csv, save_redirects_txt,
     )
     from core.analytics import (
         calculate_health_score, print_health_score,
         detect_orphan_pages, print_orphan_pages,
         detect_cannibalization, print_cannibalization,
+        build_consolidation_plan, print_consolidation_plan,
+        build_htaccess_block, build_nginx_block,
     )
 
     print(f"\n{'─' * 55}")
@@ -210,16 +213,42 @@ def _run_position(
         cannibalization = detect_cannibalization(query_rows)
         print_cannibalization(cannibalization)
 
-    # Fase 5b — tendências (pytrends)
+    # P2 — Plano de consolidação 301 (SUGESTÃO; derivado da canibalização)
+    consolidation_plan = None
+    if cannibalization:
+        consolidation_plan = build_consolidation_plan(cannibalization)
+        print_consolidation_plan(consolidation_plan)
+        if consolidation_plan["redirects"]:
+            save_redirects_csv(domain, today, consolidation_plan)
+            save_redirects_txt(
+                domain, today,
+                build_htaccess_block(consolidation_plan, today),
+                build_nginx_block(consolidation_plan, today),
+            )
+
+    # Fase 5b / P5 — tendências de demanda
     trends_data = None
-    if do_trends and query_rows:
-        from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
-        top_kws = top_keywords_from_queries(query_rows)
-        if top_kws:
-            trends_data = fetch_trends(top_kws, domain, use_cache=use_cache)
-            print_trends(trends_data)
+    if do_trends:
+        if trends_source == "pytrends":
+            # Legado: índice global via pytrends (não-oficial, frágil)
+            if query_rows:
+                from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
+                top_kws = top_keywords_from_queries(query_rows)
+                if top_kws:
+                    trends_data = fetch_trends(top_kws, domain, use_cache=use_cache)
+                    print_trends(trends_data)
+                else:
+                    print("[trends] Nenhuma keyword Top 10 para buscar tendências.")
         else:
-            print("[trends] Nenhuma keyword Top 10 para buscar tendências.")
+            # P5 — padrão: dimensão `date` do GSC (demanda real, 90 dias)
+            from fetchers.position_fetcher import fetch_date_trends
+            from core.analytics import compute_date_trends, print_date_trends
+            try:
+                raw_trends  = fetch_date_trends(service, site, use_cache=use_cache)
+                trends_data = compute_date_trends(raw_trends)
+                print_date_trends(trends_data)
+            except Exception as exc:
+                print(f"\n[ERRO] Falha ao buscar tendências GSC: {exc}")
 
     # Fase 5c — NLP (opt-in)
     nlp_results = None
@@ -273,6 +302,7 @@ def _run_position(
         consolidated=consolidated,
         nlp_results=nlp_results if nlp_results else None,
         content_results=content_results,
+        consolidation_plan=consolidation_plan,
     )
     dashboard_path = save_dashboard(domain, html)
     if result_store is not None:
@@ -296,6 +326,7 @@ def _run_position(
             query_rows=query_rows,
             nlp_results=nlp_results if nlp_results else None,
             content_results=content_results,
+            consolidation_plan=consolidation_plan,
         )
         save_excel_report(domain, today, wb)
 
@@ -373,6 +404,7 @@ def run_tasks(
                     service, site, domain, today, formats, use_cache,
                     do_queries=do_queries,
                     do_trends=do_trends,
+                    trends_source=params.get("trends_source", "gsc"),
                     do_nlp=do_nlp,
                     do_content=do_content,
                     api_key=api_key,

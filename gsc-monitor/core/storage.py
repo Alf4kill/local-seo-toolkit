@@ -377,6 +377,64 @@ def save_nlp_report(site: str, date: str, html: str) -> str:
     return filepath
 
 
+def save_redirects_csv(site: str, date: str, plan: dict) -> str:
+    """
+    Salva o plano de consolidação 301 (SUGESTÃO) em CSV:
+        relatorios/{site}/{date}_redirects.csv
+
+    Colunas: from_url | to_url | keyword | severity | clicks_from | clicks_to
+
+    A primeira linha do arquivo é um comentário com o aviso de sugestão
+    (regra de honestidade). Encoding utf-8-sig para Excel no Windows.
+    """
+    filepath = _report_path(site, date, "redirects", "csv")
+    with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
+        f.write(f"# {plan.get('disclaimer', 'SUGESTAO — revisar antes de aplicar')}\n")
+        writer = csv.writer(f)
+        writer.writerow([
+            "from_url",
+            "to_url",
+            "keyword",
+            "severity",
+            "clicks_from",
+            "clicks_to",
+        ])
+        for r in plan.get("redirects", []):
+            writer.writerow([
+                r["from_url"],
+                r["to_url"],
+                r["keyword"],
+                r["severity"],
+                r["clicks_from"],
+                r["clicks_to"],
+            ])
+        for c in plan.get("conflicts", []):
+            f.write(f"# conflito: {c}\n")
+    print(f"[storage] Plano de redirects (sugestao) salvo em: {filepath}")
+    return filepath
+
+
+def save_redirects_txt(site: str, date: str, apache_block: str, nginx_block: str) -> tuple:
+    """
+    Salva os blocos de configuração de servidor do plano 301 (SUGESTÃO):
+        relatorios/{site}/{date}_redirects_apache.txt   (.htaccess)
+        relatorios/{site}/{date}_redirects_nginx.txt    (server {})
+
+    Retorna (path_apache, path_nginx).
+    """
+    path_apache = _report_path(site, date, "redirects_apache", "txt")
+    with open(path_apache, "w", encoding="utf-8") as f:
+        f.write(apache_block)
+    print(f"[storage] Bloco Apache (sugestao) salvo em: {path_apache}")
+
+    path_nginx = _report_path(site, date, "redirects_nginx", "txt")
+    with open(path_nginx, "w", encoding="utf-8") as f:
+        f.write(nginx_block)
+    print(f"[storage] Bloco nginx (sugestao) salvo em: {path_nginx}")
+
+    return path_apache, path_nginx
+
+
 def save_csv_posicao(site: str, date: str, report: dict) -> str:
     """
     Salva o relatório de posicionamento em CSV:

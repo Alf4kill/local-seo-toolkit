@@ -1,0 +1,13 @@
+# sites.example.txt — modelo de arquivo para o modo batch do posicao.py
+#
+# Uso:
+#   1. Copie este arquivo para sites.txt
+#   2. Liste um domínio por linha (mesmo formato aceito por --site)
+#   3. Rode:  py posicao.py --batch sites.txt --batch-report
+#
+# Linhas iniciadas com # são comentários e são ignoradas.
+# Comentários no fim da linha também funcionam.
+
+www.exemplo.com.br
+exemplo.com            # comentário inline é permitido
+# sc-domain:exemplo.com.br   (Domain Property — descomente para usar)

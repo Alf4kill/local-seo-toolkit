@@ -268,18 +268,34 @@ def _build_sheet_resumo(
         info_row(29, "Comp. Posicionamento (peso 40%)",   comp["position"])
         info_row(30, "Comp. CTR vs benchmark (peso 20%)", comp["ctr"])
 
+        # P4 — alertas por componente: o composto pode mascarar um componente
+        # crítico (caso real: 70.7 "Bom" com CTR 8.7/100). Mostra os dois.
+        r = 31
+        for a in (health.get("component_alerts") or []):
+            cell = ws.cell(row=r, column=1,
+                           value=f"⚠ ALERTA ({a['severity'].upper()}) — {a['message']}")
+            cell.font      = Font(bold=True, size=9, color="9C0006")
+            cell.fill      = _fill("FFC7CE")
+            cell.alignment = Alignment(indent=2, wrap_text=True, vertical="center")
+            ws.merge_cells(f"A{r}:C{r}")
+            _row_height(ws, r, 28)
+            r += 1
+
         if not health["has_indexation_data"]:
-            note = ws.cell(row=31, column=1,
+            note = ws.cell(row=r, column=1,
                            value="* Indexação não executada — score baseado só em Posição + CTR (pesos re-normalizados)")
             note.font      = Font(italic=True, size=8, color="888888")
             note.alignment = Alignment(indent=2)
-            ws.merge_cells("A31:C31")
-            _row_height(ws, 31, 14)
+            ws.merge_cells(f"A{r}:C{r}")
+            _row_height(ws, r, 14)
+            r += 1
+
+        health_end = r
 
     # ── Knowledge Graph (opcional — Fase 5a) ────────────────────────────────
     if kg_result is not None:
         if health is not None:
-            kg_start = 32 if health.get("has_indexation_data", True) else 33
+            kg_start = health_end + 1
         else:
             kg_start = 26
 
@@ -550,9 +566,23 @@ def _build_sheet_trends(
     ws.title = "Trends"
     ws.sheet_view.showGridLines = False
 
+    # P5 — fonte GSC (padrão) vs pytrends (legado): rótulos honestos por fonte
+    is_gsc = any(isinstance(td, dict) and td.get("source") == "gsc"
+                 for td in trends_data.values())
+    if is_gsc:
+        n_days  = len(next(iter(trends_data.values())).get("values", []))
+        title   = f"Tendências de demanda — GSC ({n_days} dias)  |  {domain}"
+        legend  = ("Impressões/dia do próprio site na busca (dimensão date da Search Analytics API). "
+                   "Tendência = média do 1º terço vs último terço do período. Não é o índice 0–100 do Google Trends.")
+        headers = ["Keyword", "Posição Atual", "Tendência", "Pico (impr./dia)", "Média recente", "Período"]
+    else:
+        title   = f"Tendências Google Trends (12 meses)  |  {domain}"
+        legend  = "Interesse relativo 0–100 no Google Trends. Tendência calculada sobre a média dos primeiros 3 vs. últimos 3 meses."
+        headers = ["Keyword", "Posição Atual", "Tendência (12m)", "Pico", "Atual", "Período"]
+
     ws.merge_cells("A1:F1")
     t = ws["A1"]
-    t.value     = f"Tendências Google Trends (12 meses)  |  {domain}"
+    t.value     = title
     t.font      = Font(bold=True, color=HEADER_FG, size=11)
     t.fill      = _fill(TITLE_BG)
     t.alignment = Alignment(horizontal="center", vertical="center")
@@ -560,12 +590,10 @@ def _build_sheet_trends(
 
     ws.merge_cells("A2:F2")
     leg = ws["A2"]
-    leg.value     = "Interesse relativo 0–100 no Google Trends. Tendência calculada sobre a média dos primeiros 3 vs. últimos 3 meses."
+    leg.value     = legend
     leg.font      = Font(italic=True, size=9, color="595959")
     leg.alignment = Alignment(horizontal="left", vertical="center", indent=1)
     _row_height(ws, 2, 16)
-
-    headers = ["Keyword", "Posição Atual", "Tendência (12m)", "Pico", "Atual", "Período"]
     for col, h in enumerate(headers, start=1):
         _set_header(ws, 3, col, h)
     _row_height(ws, 3, 22)
@@ -855,6 +883,116 @@ def _build_sheet_canibalizacao(ws, cannibalization: list, domain: str, data: dic
 
 
 # ---------------------------------------------------------------------------
+# Sheet — Plano de Consolidação 301  (P2 — SUGESTÃO)
+# ---------------------------------------------------------------------------
+
+def _build_sheet_plano_301(ws, plan: dict, domain: str, data: dict) -> None:
+    ws.title = "Plano 301"
+    ws.sheet_view.showGridLines = False
+
+    ws.merge_cells("A1:F1")
+    t = ws["A1"]
+    t.value     = (
+        f"Plano de Consolidação 301 — SUGESTÃO  |  {domain}  |  "
+        f"{data['start_date']} a {data['end_date']}"
+    )
+    t.font      = Font(bold=True, color=HEADER_FG, size=11)
+    t.fill      = _fill(TITLE_BG)
+    t.alignment = Alignment(horizontal="center", vertical="center")
+    _row_height(ws, 1, 20)
+
+    # Aviso de honestidade — sempre visível
+    ws.merge_cells("A2:F2")
+    leg = ws["A2"]
+    leg.value     = (
+        "⚠ SUGESTÃO automática — NÃO aplicar sem revisão humana. "
+        "Canônica escolhida por: cliques (desc) → posição (asc) → impressões (desc). "
+        "Confirme que as páginas são redundantes antes de criar 301 (difícil de reverter)."
+    )
+    leg.font      = Font(italic=True, size=9, color="9C5700")
+    leg.fill      = _fill("FFEB9C")
+    leg.alignment = Alignment(horizontal="left", vertical="center", indent=1, wrap_text=True)
+    _row_height(ws, 2, 26)
+
+    headers = ["Keyword", "Severidade", "Redirect de (301)", "Para (canônica)",
+               "Cliques origem", "Cliques destino"]
+    for col, h in enumerate(headers, start=1):
+        _set_header(ws, 3, col, h)
+    _row_height(ws, 3, 22)
+
+    SEVERITY_FILL = {"alta": "FFC7CE", "média": "FFEB9C", "baixa": "C6EFCE"}
+    group_fills   = ["EBF3FB", "F2F7EE"]
+    brd     = _border()
+    row_idx = 4
+
+    for g_idx, group in enumerate(plan.get("groups", [])):
+        bg_color = group_fills[g_idx % 2]
+        sev      = group.get("severity", "baixa")
+        canonical = group["canonical"]
+
+        for s_idx, src in enumerate(group["sources"]):
+            keyword_val = group["query"] if s_idx == 0 else ""
+            sev_val     = sev.upper()    if s_idx == 0 else ""
+            values = [
+                keyword_val,
+                sev_val,
+                src["url"],
+                canonical["url"],
+                src.get("clicks", 0),
+                canonical.get("clicks", 0),
+            ]
+            fmts = [None, None, None, None, "#,##0", "#,##0"]
+
+            for col, (val, fmt) in enumerate(zip(values, fmts), start=1):
+                cell = ws.cell(row=row_idx, column=col, value=val)
+                if col == 2 and s_idx == 0:
+                    cell.fill = _fill(SEVERITY_FILL.get(sev, "D9D9D9"))
+                else:
+                    cell.fill = _fill(bg_color)
+                cell.border    = brd
+                cell.font      = Font(size=9, bold=(col == 1 and s_idx == 0))
+                cell.alignment = Alignment(
+                    vertical="center",
+                    horizontal="center" if col in (2, 5, 6) else "left",
+                    wrap_text=(col in (3, 4)),
+                )
+                if fmt:
+                    cell.number_format = fmt
+            _row_height(ws, row_idx, 15)
+            row_idx += 1
+
+        # Linha separadora entre grupos
+        for col in range(1, 7):
+            ws.cell(row=row_idx, column=col).fill = _fill("EEEEEE")
+        _row_height(ws, row_idx, 4)
+        row_idx += 1
+
+    # Conflitos resolvidos automaticamente (transparência)
+    conflicts = plan.get("conflicts", [])
+    if conflicts:
+        row_idx += 1
+        ws.merge_cells(f"A{row_idx}:F{row_idx}")
+        c = ws.cell(row=row_idx, column=1,
+                    value=f"Conflitos entre grupos resolvidos automaticamente ({len(conflicts)}):")
+        c.font = Font(bold=True, size=9, color="9C5700")
+        row_idx += 1
+        for msg in conflicts:
+            ws.merge_cells(f"A{row_idx}:F{row_idx}")
+            cell = ws.cell(row=row_idx, column=1, value=f"• {msg}")
+            cell.font      = Font(size=8, color="595959")
+            cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+            row_idx += 1
+
+    widths = [26, 11, 52, 52, 12, 12]
+    for col, w in enumerate(widths, start=1):
+        _col_width(ws, col, w)
+
+    ws.freeze_panes = "A4"
+    if plan.get("redirects"):
+        ws.auto_filter.ref = f"A3:F{row_idx - 1}"
+
+
+# ---------------------------------------------------------------------------
 # Sheet — Qualidade de Conteúdo  (Move 1)
 # ---------------------------------------------------------------------------
 
@@ -863,6 +1001,13 @@ CQ_VERDICT_FILL = {
     "atencao":        "FFEB9C",
     "over_otimizado": "FFC7CE",
     "raso":           "FFC7CE",
+}
+
+# P3 — rótulo da fonte que disparou a densidade reportada
+_CQ_DENSITY_SOURCE = {
+    "query": "query GSC",
+    "slug":  "slug da URL",
+    "ngram": "n-grama dominante",
 }
 
 
@@ -888,7 +1033,7 @@ def _build_sheet_content_quality(ws, content_results: dict, domain: str) -> None
     leg.alignment = Alignment(horizontal="left", vertical="center", indent=1)
     _row_height(ws, 2, 16)
 
-    headers = ["Veredito", "URL", "Palavras", "Densidade (%)", "Keyword-alvo",
+    headers = ["Veredito", "URL", "Palavras", "Densidade (%)", "Keyword gatilho (fonte)",
                "Diversidade", "Entidades", "Alertas"]
     for col, h in enumerate(headers, start=1):
         _set_header(ws, 3, col, h)
@@ -903,12 +1048,19 @@ def _build_sheet_content_quality(ws, content_results: dict, domain: str) -> None
         verdict = cq.get("verdict", "ok")
         fill_v  = _fill(CQ_VERDICT_FILL.get(verdict, "D9D9D9"))
         ent     = cq.get("entity_count")
+
+        # P3 — keyword que disparou a densidade + fonte (query/slug/n-grama)
+        kw_disp = cq.get("densest_keyword") or "—"
+        src     = _CQ_DENSITY_SOURCE.get(cq.get("density_source"))
+        if kw_disp != "—" and src:
+            kw_disp = f"{kw_disp}  ({src})"
+
         values = [
             cq.get("verdict_label", verdict),
             url,
             cq.get("word_count", 0),
             (cq.get("keyword_density", 0) or 0) / 100,   # decimal p/ formatação %
-            cq.get("densest_keyword") or "—",
+            kw_disp,
             cq.get("vocab_diversity", 0),
             ent if ent is not None else "s/d",
             " · ".join(cq.get("reasons", [])) or "—",
@@ -954,6 +1106,7 @@ def generate_excel(
     query_rows: "list | None" = None,
     nlp_results: "dict | None" = None,
     content_results: "dict | None" = None,
+    consolidation_plan: "dict | None" = None,
 ) -> Workbook:
     """
     Gera o Workbook Excel com até 9 sheets.
@@ -975,6 +1128,10 @@ def generate_excel(
         trends_data       — dict de trends_fetcher.fetch_trends()       → sheet "Trends"
         query_rows        — list de position_fetcher.fetch_query_positions() → posições para Trends
         nlp_results       — dict de nlp_analyzer.analyze_opportunity_urls() → coluna em Oportunidades
+
+    Parâmetros opcionais (P2):
+        consolidation_plan — dict de analytics.build_consolidation_plan() → sheet "Plano 301"
+                             (SUGESTÃO de redirects; só aparece se houver redirects)
 
     Retorna o objeto Workbook (salvo por storage.save_excel_report).
     """
@@ -1012,6 +1169,10 @@ def generate_excel(
     if cannibalization:
         ws_can = wb.create_sheet()
         _build_sheet_canibalizacao(ws_can, cannibalization, domain, data)
+
+    if consolidation_plan and consolidation_plan.get("redirects"):
+        ws_plan = wb.create_sheet()
+        _build_sheet_plano_301(ws_plan, consolidation_plan, domain, data)
 
     if content_results:
         ws_cq = wb.create_sheet()

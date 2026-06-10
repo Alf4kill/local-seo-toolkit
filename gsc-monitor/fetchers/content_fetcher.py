@@ -95,7 +95,7 @@ def analyze_opportunity_content_quality(
             continue
         kws     = target_keywords_for_url(query_rows or [], url)
         nlp_res = (nlp_results or {}).get(url)
-        cq      = analyze_content_quality(text, kws, nlp_res)
+        cq      = analyze_content_quality(text, kws, nlp_res, url=url)
         results[url] = cq
         # Usa a chave 'verdict' (ASCII) e não 'verdict_label' (emoji) para não
         # depender da codificação do console — os emojis ficam só nos relatórios.

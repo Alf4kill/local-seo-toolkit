@@ -85,6 +85,8 @@ class TestHealthScore(unittest.TestCase):
         self.assertIn("components", h)
         self.assertIn("position", h["components"])
         self.assertIn("ctr", h["components"])
+        self.assertIn("component_alerts", h)          # P4
+        self.assertIsInstance(h["component_alerts"], list)
 
     def test_grade_bom(self):
         """Score na faixa 60-79 = 'Bom'."""
@@ -101,6 +103,83 @@ class TestHealthScore(unittest.TestCase):
         h = calculate_health_score(report)
         self.assertEqual(h["components"]["position"], 0.0)
         self.assertEqual(h["components"]["ctr"], 50.0)
+
+
+# ---------------------------------------------------------------------------
+# P4 — Alertas por componente do health score
+# ---------------------------------------------------------------------------
+
+class TestComponentAlerts(unittest.TestCase):
+
+    def test_composto_bom_com_ctr_critico_alerta(self):
+        """
+        O caso real (canilmansur): composto "Bom"/"Excelente" mascarando CTR
+        péssimo. O alerta tem que apontar o CTR mesmo com o score geral alto.
+        """
+        # posição 1 (comp=100), indexação 100%, mas CTR 0.5% vs benchmark 28.5%
+        rows = [_row("https://ex.com/1", position=1.0, impressions=10000,
+                     clicks=50, ctr=0.5)]
+        report = _make_position_report(rows)
+        consolidated = {"total_urls": 1, "summary": {"indexed": {"percent": 100.0}}}
+        h = calculate_health_score(report, consolidated)
+
+        # O composto continua bom — e continua sendo reportado (nunca suprimido)
+        self.assertGreaterEqual(h["score"], 60)
+        self.assertIn(h["grade"], ["Bom", "Excelente"])
+
+        alerts = h["component_alerts"]
+        self.assertEqual(len(alerts), 1)
+        a = alerts[0]
+        self.assertEqual(a["component"], "ctr")
+        self.assertEqual(a["severity"], "critico")
+        self.assertLess(a["value"], 20)
+        self.assertIn("CTR", a["message"])
+        self.assertTrue(a["label"])
+
+    def test_tudo_bom_nao_alerta(self):
+        """Site saudável em todos os componentes: zero alertas."""
+        rows = [_row("https://ex.com/1", position=1.0, impressions=1000,
+                     clicks=285, ctr=28.5)]
+        report = _make_position_report(rows)
+        consolidated = {"total_urls": 1, "summary": {"indexed": {"percent": 100.0}}}
+        h = calculate_health_score(report, consolidated)
+        self.assertEqual(h["component_alerts"], [])
+
+    def test_indexacao_sem_dados_nao_alerta_indexacao(self):
+        """Sem indexação executada (None) não pode virar alerta de indexação."""
+        rows = [_row("https://ex.com/1", position=1.0, impressions=1000,
+                     clicks=285, ctr=28.5)]
+        report = _make_position_report(rows)
+        h = calculate_health_score(report, None)   # indexação = None
+        comps = [a["component"] for a in h["component_alerts"]]
+        self.assertNotIn("indexation", comps)
+
+    def test_severidade_alto_entre_20_e_40(self):
+        """Componente entre 20 e 40 = alerta 'alto' (não 'critico')."""
+        from core.analytics import build_component_alerts
+        alerts = build_component_alerts({"indexation": 30.0, "position": 85.0,
+                                         "ctr": 90.0})
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["component"], "indexation")
+        self.assertEqual(alerts[0]["severity"], "alto")
+
+    def test_multiplos_componentes_criticos(self):
+        """Mais de um componente abaixo do limiar → um alerta por componente."""
+        from core.analytics import build_component_alerts
+        alerts = build_component_alerts({"indexation": 5.0, "position": 10.0,
+                                         "ctr": 15.0})
+        self.assertEqual(len(alerts), 3)
+        self.assertTrue(all(a["severity"] == "critico" for a in alerts))
+
+    def test_mensagens_em_portugues_claro(self):
+        """Cada alerta carrega 1 linha explicativa não-vazia em pt-BR."""
+        from core.analytics import build_component_alerts
+        alerts = build_component_alerts({"indexation": 10.0, "position": 10.0,
+                                         "ctr": 10.0})
+        for a in alerts:
+            self.assertGreater(len(a["message"]), 20)
+            self.assertTrue(any(ch.isdigit() for ch in a["message"]),
+                            "mensagem deve citar o valor do componente")
 
 
 # ---------------------------------------------------------------------------

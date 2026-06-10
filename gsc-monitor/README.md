@@ -75,15 +75,52 @@ AIzaSy...sua_chave_aqui
 
 | Flag | Descrição |
 |------|-----------|
-| `--site` | Domínio a analisar (obrigatório) |
+| `--site` | Domínio a analisar |
 | `--excel` | Gera relatório `.xlsx` |
 | `--csv` | Gera relatório `.csv` |
 | `--txt` | Gera relatório `.txt` legível |
 | `--queries` | Analisa canibalização de keywords |
-| `--trends` | Busca tendências no Google Trends |
+| `--trends` | Tendências de demanda — padrão: dimensão `date` do GSC (90 dias, impressões/dia do próprio site) |
+| `--trends-source pytrends` | Fonte legada: índice global 0–100 do Google Trends (não-oficial, frágil) |
 | `--nlp` | Analisa entidades e categorias NLP (consome cota de API) |
+| `--content` | Diagnóstico de qualidade de conteúdo (sem cota) |
 | `--no-cache` | Ignora cache e força dados frescos da API |
 | `--api-key KEY` | API key do Google Cloud |
+| `--batch ARQUIVO` | Modo lote headless: pipeline padrão para cada domínio do arquivo |
+| `--batch-report` | Com `--batch`: resumo do lote em `relatorios/_batch/YYYY-MM-DD_resumo.csv` |
+
+### CLI — Batch (vários domínios de uma vez)
+
+```powershell
+.\.venv\Scripts\python.exe posicao.py --batch sites.txt --batch-report
+```
+
+O modo batch roda o pipeline padrão de ranking (**posições + queries +
+qualidade de conteúdo**, cache-aware, sem GUI) para cada domínio listado em
+`sites.txt` — um por linha; linhas com `#` são comentários (modelo em
+`sites.example.txt`). Para cada site, o histórico (`historico_posicao.json`)
+recebe um novo snapshot e o dashboard é regenerado. Erros em um site **não
+interrompem** os demais; ao final é impressa uma linha-resumo por site
+(health score + grade + nº de snapshots).
+
+Com `--batch-report`, um CSV consolidado é gravado em
+`relatorios/_batch/YYYY-MM-DD_resumo.csv` com colunas: site, status, health,
+grade, posição média, CTR, grupos de canibalização, contagem de vereditos de
+conteúdo (ok / atenção / over-otimizado / raso) e total de snapshots.
+
+#### Snapshots semanais automáticos (Windows Task Scheduler)
+
+Para acumular snapshots toda semana sem rodar manualmente, crie a tarefa
+agendada com uma linha (ajuste o caminho da pasta se necessário):
+
+```powershell
+schtasks /Create /TN "GSC Monitor Semanal" /SC WEEKLY /D MON /ST 08:00 /TR "cmd /c cd /d E:\projetos\projetoprst.com.br\gsc-monitor && .venv\Scripts\python.exe posicao.py --batch sites.txt --batch-report"
+```
+
+Para conferir ou remover: `schtasks /Query /TN "GSC Monitor Semanal"` e
+`schtasks /Delete /TN "GSC Monitor Semanal" /F`. Requisito: `token.json` já
+gerado (rode uma vez manualmente antes para autenticar no navegador — a
+tarefa agendada usa o refresh silencioso do token, sem abrir janelas).
 
 ### CLI — Indexação
 
@@ -103,6 +140,25 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 | `YYYY-MM-DD_posicao.xlsx` | Excel com abas: Resumo, Posicionamento, Oportunidades CTR, Histórico, Trends, Canibalização, Sem Impressões |
 | `dashboard.html` | Dashboard interativo com gráficos Chart.js |
 | `YYYY-MM-DD_indexacao.json` | Dados brutos de indexação |
+| `_batch/YYYY-MM-DD_resumo.csv` | Resumo consolidado do modo batch (`--batch-report`) |
+| `YYYY-MM-DD_redirects.csv` | **Sugestão** de consolidação 301 (gerado quando há canibalização, via `--queries`) |
+| `YYYY-MM-DD_redirects_apache.txt` | Bloco `.htaccess` (Apache) com os 301 sugeridos |
+| `YYYY-MM-DD_redirects_nginx.txt` | Bloco `server {}` (nginx) com os 301 sugeridos |
+
+### Plano de Consolidação 301 (sugestão)
+
+Quando a análise de canibalização (`--queries`) encontra grupos de URLs
+competindo pela mesma keyword, a ferramenta gera automaticamente um **plano de
+consolidação 301**: para cada grupo, escolhe a URL canônica (mais cliques →
+melhor posição → mais impressões) e lista as demais como origens de redirect.
+O plano sai em três formatos prontos para aplicar (CSV + Apache + nginx), além
+da sheet "Plano 301" no Excel e de uma seção no dashboard.
+
+> ⚠ **O plano é uma sugestão automática — nunca aplique sem revisão humana.**
+> Confirme que as páginas são de fato redundantes (e não intencionalmente
+> distintas) antes de criar redirects 301, que são difíceis de reverter.
+> Conflitos entre grupos (URL canônica em um grupo e concorrente em outro) são
+> resolvidos por prioridade de severidade e listados nos artefatos.
 
 ---
 
@@ -112,7 +168,7 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 .\.venv\Scripts\python.exe -m unittest discover -s tests -t .
 ```
 
-Saída esperada: **82 testes OK** (Fases 4, 5 e 6).
+Saída esperada: **183 testes OK** (Fases 4, 5, 6, conteúdo, batch, plano 301, alertas e trends GSC).
 
 Testes das Fases 1 e 2 (script-based):
 ```powershell
@@ -169,6 +225,6 @@ gsc-monitor/
 ## Notas
 
 - O cache tem TTL de 72h para posicionamento/NLP e 24h para indexação. Use `--no-cache` para forçar dados frescos.
-- `pytrends` é necessário para `--trends`: `pip install pytrends` (já incluso no `requirements.txt`).
+- `--trends` usa por padrão a dimensão `date` do GSC (oficial, sem dependência extra). `pytrends` só é necessário para o caminho legado `--trends-source pytrends`.
 - O dashboard HTML é gerado automaticamente a cada execução de posicionamento.
 - A flag `--nlp` consome cota da Cloud Natural Language API (2 unidades por URL, gratuito até 5.000/mês).

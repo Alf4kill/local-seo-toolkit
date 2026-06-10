@@ -242,6 +242,192 @@ gsc-monitor/
 
 ---
 
+### P1 — Modo batch headless (snapshots agendados) ✅ (2026-06-09)
+**Arquivos criados:** `core/batch.py`, `sites.example.txt`, `tests/test_batch.py`
+**Arquivos modificados:** `posicao.py`, `README.md`, `CLAUDE.md`, `.gitignore`
+
+**Mudanças:**
+- Pipeline de `posicao.py` extraído para `run_pipeline(site, **opções)` —
+  mesmo fluxo do CLI, mas levanta `PipelineError` em vez de `sys.exit` e
+  retorna resumo (health, posição média, CTR, canibalização, vereditos de
+  conteúdo, nº de snapshots). CLI single-site inalterado.
+- `py posicao.py --batch sites.txt`: roda o pipeline padrão (posições +
+  queries + qualidade de conteúdo, cache-aware, sem GUI) para cada domínio do
+  arquivo, sequencialmente. Erro em um site **não aborta** o lote; linha-resumo
+  ASCII por site (health + grade + snapshots) e recap ao final.
+- `--batch-report`: CSV consolidado em `relatorios/_batch/YYYY-MM-DD_resumo.csv`
+  (site, status, health, grade, posição média, CTR, grupos de canibalização,
+  contagem de vereditos ok/atenção/over/raso, snapshots, erro). utf-8-sig.
+- `sites.txt` no `.gitignore` (domínios reais); modelo em `sites.example.txt`
+  (um domínio/linha, `#` comenta, inline também).
+- README: seção batch + one-liner do Windows Task Scheduler para snapshots
+  semanais automáticos (alimenta o loop de medição do Move 2 sem runs manuais).
+
+**Por quê:** o loop de medição (Move 2) só responde "PLN ajuda?" se houver
+snapshots acumulando consistentemente — o batch agendado remove a dependência
+de lembrar de rodar manualmente.
+
+**Testes:** `tests/test_batch.py` — 18/18 (orquestrador puro, pipeline mockado)
+`py -m unittest discover` → **122 testes OK**
+
+---
+
+### P2 — Plano de consolidação 301 (executor da recomendação) ✅ (2026-06-09)
+**Arquivos criados:** `tests/test_consolidation.py`
+**Arquivos modificados:** `core/analytics.py`, `core/storage.py`,
+`reporters/excel_reporter.py`, `reporters/html_reporter.py`, `posicao.py`,
+`gui/runner.py`, `README.md`, `CLAUDE.md`
+
+**Mudanças:**
+- `build_consolidation_plan(cannibalization)` em `core/analytics.py` (puro):
+  para cada grupo, escolhe a URL canônica (**cliques desc → posição asc →
+  impressões desc**) e lista as demais como origens de redirect 301.
+- Resolução de conflitos entre grupos (URL em vários grupos): prioridade por
+  severidade; canônica nunca vira origem; origem não recebe segundo destino;
+  sem cadeias/ciclos por construção. Conflitos registrados e exibidos.
+- Artefatos por execução (quando há canibalização): `YYYY-MM-DD_redirects.csv`
+  (from_url, to_url, keyword, severity, clicks_from, clicks_to),
+  `*_redirects_apache.txt` (bloco `Redirect 301` p/ .htaccess) e
+  `*_redirects_nginx.txt` (bloco `location = ... return 301`). Configs em
+  ASCII puro (keywords com acento são normalizadas nos comentários).
+- **Regra de honestidade:** todos os outputs (CSV, txt, Excel, dashboard,
+  terminal) marcam o plano como SUGESTÃO com aviso de revisão humana.
+- Sheet "Plano 301" no Excel + seção 🔀 no dashboard (escapada, degrada bem).
+- Parâmetros propagados aos DOIS call sites (`posicao.py` e `gui/runner.py`).
+
+**Por quê:** a recomendação de consolidar a canilmansur (122 grupos) existia
+só como diagnóstico. Com o artefato executável, a intervenção do experimento
+antes/depois (P12) pode ser aplicada em produção diretamente.
+
+**Testes:** `tests/test_consolidation.py` — 21/21: ordenação da canônica,
+conflitos, formatos de arquivo, escape de HTML, sheet Excel.
+`py -m unittest discover` → **143 testes OK**
+
+---
+
+### P3 — Densidade vs slug e n-grama dominante ✅ (2026-06-09)
+**Arquivos modificados:** `core/content_quality.py`, `fetchers/content_fetcher.py`,
+`reporters/excel_reporter.py`, `reporters/html_reporter.py`,
+`tests/test_content_quality.py`, `README.md`, `CLAUDE.md`
+
+**Problema (honestidade analítica):** a densidade usava só a query natural do
+GSC. Página otimizada para o slug, sem query correspondente, reportava 0% de
+densidade e recebia veredito **falsamente limpo** — minando a promessa central
+do projeto (detectar over-optimization de verdade).
+
+**Mudanças:**
+- `keyword_density` reportada agora é o **máximo entre 3 fontes**:
+  (a) queries reais do GSC; (b) `slug_phrase(url)` — slug → frase, split em
+  `-`/`_`, remove stopwords pt-BR e números, casa com texto acentuado
+  ("preco" ↔ "preço"); (c) `dominant_ngram(text)` — n-grama 2–3 mais repetido,
+  piso de 4 ocorrências, bordas não podem ser stopword, acentos agrupados.
+- Novo campo `density_source` (`query`/`slug`/`ngram`); empates priorizam
+  query > slug > n-grama. As **reasons citam o gatilho**:
+  `Gatilho: "cane corso preco" (slug da URL, 12.4%)`.
+- `analyze_content_quality` ganhou parâmetro opcional `url` (retrocompatível);
+  `content_fetcher` repassa a URL analisada.
+- Excel: coluna "Keyword-alvo" → "Keyword gatilho (fonte)". Dashboard: linha de
+  densidade mostra keyword + fonte. Terminal idem.
+- **Thresholds inalterados** — veredito continua conservador; 1 flag de
+  densidade isolada ainda é só "atenção".
+
+**Testes:** +13 novos (slug_phrase, dominant_ngram, fontes de densidade,
+caso slug-stuffed sem query GSC ≠ ok, página limpa continua ok, gatilho nas
+reasons); 1 teste existente atualizado (`test_sem_keyword_alvo` — o
+comportamento antigo de 0% era exatamente o bug corrigido).
+`py -m unittest discover` → **156 testes OK**
+
+---
+
+### P4 — Alertas por componente do health score ✅ (2026-06-09)
+**Arquivos modificados:** `core/analytics.py`, `reporters/excel_reporter.py`,
+`reporters/html_reporter.py`, `gui/main_window.py`,
+`tests/test_analytics_phase4.py`, `README.md`, `CLAUDE.md`
+
+**Problema (honestidade analítica):** o score composto mascara componente
+crítico — caso real: canilmansur 70.7 "Bom" com CTR 8.7/100. O número único
+escondia exatamente o problema que importava.
+
+**Mudanças:**
+- `build_component_alerts(components)` em `core/analytics.py`: componente
+  < 40 gera alerta `{component, label, value, severity, message}`; severidade
+  **critico** (< 20) ou **alto** (20–39.9); mensagem de 1 linha em pt-BR
+  explicando o que significa (sem jargão). Componente sem dados (indexação
+  None) não alerta. Incluído no retorno de `calculate_health_score` como
+  `component_alerts`.
+- **O composto NUNCA é suprimido** — score geral e alertas aparecem juntos em
+  todas as superfícies: terminal (`print_health_score`, bloco `[ALERTA ...]`),
+  GUI (badge vermelho na status bar ao lado do score), Excel (linhas
+  destacadas na seção Saúde da sheet "Resumo"; seção KG reposicionada
+  dinamicamente) e dashboard (caixa vermelha na seção 🏥 Saúde).
+
+**Testes:** +6 — composto "Excelente" com CTR crítico DEVE alertar (o caso
+canilmansur sintético); tudo-bom NÃO alerta; indexação None não vira alerta;
+severidades; mensagens citam o valor. `test_estrutura_retorno` atualizado.
+`py -m unittest discover` → **162 testes OK**
+
+---
+
+### P5 — Tendências first-party via dimensão `date` do GSC ✅ (2026-06-10)
+**Arquivos criados:** `tests/test_date_trends.py`
+**Arquivos modificados:** `core/cache.py`, `core/analytics.py`,
+`fetchers/position_fetcher.py`, `posicao.py`, `gui/runner.py`,
+`reporters/html_reporter.py`, `reporters/excel_reporter.py`, `README.md`,
+`CLAUDE.md`
+
+**Por quê:** o pytrends é não-oficial, frágil (rate-limit, quebras de API) e
+mede o índice GLOBAL 0–100 do Google Trends — não a demanda do próprio site.
+A dimensão `date` da Search Analytics é oficial, free, sem rate-limit e
+específica do site.
+
+**Mudanças:**
+- `fetch_date_trends` (`position_fetcher.py`): 2 consultas — dimensões
+  `[date]` (site inteiro) e `[date, query]` — últimos 90 dias, dataState
+  final. Cache `date_trends_{start}_{end}.json`, **TTL 24h** (`core/cache.py`).
+- `compute_date_trends` (`core/analytics.py`, pura): tendência por
+  **1º terço vs último terço** das impressões/dia (≥115% rising, ≤85%
+  declining, senão stable; < 6 dias = stable; < 14 dias com dados = sparse).
+  Primeira entrada é sempre `SITE_TREND_KEY` (domínio inteiro); demais são as
+  top-10 queries por impressões. Dias sem linha na API contam como 0. Shape
+  compatível com as superfícies existentes de Trends (`trend/peak/latest/
+  values/sparse`) + campos `source/metric/first_avg/last_avg`.
+- `--trends` agora usa GSC **por padrão**; `--trends-source pytrends` mantém o
+  caminho legado. Propagado aos dois call sites (`posicao.py`, `gui/runner.py`).
+- Dashboard: gráfico de **linha** com as séries diárias (site + top 5 queries)
+  quando a fonte é GSC; barras 0–100 continuam para o legado. Rótulos honestos
+  por fonte na seção, no Excel ("Tendências de demanda — GSC (90 dias)",
+  "Pico (impr./dia)", "Média recente") e no terminal (`print_date_trends`).
+
+**Testes:** `tests/test_date_trends.py` — 19/19: classificação por terços,
+top_n, datas faltantes = 0, sparse, eixo de datas, parsing com service
+mockado, corpos das 2 chamadas, cache hit evita API, chart line vs bar.
+`py -m unittest discover` → **181 testes OK**
+
+---
+
+### Bugfix — NENHUM gráfico do dashboard renderizava no navegador ✅ (2026-06-10)
+**Arquivo modificado:** `reporters/html_reporter.py` (+2 testes em `tests/test_date_trends.py`)
+
+**Sintoma (reportado no dashboard real da canilmansur):** seções "Histórico de
+Posicionamento" e "Tendências" com a área do gráfico vazia — na verdade,
+**todos** os 4 gráficos (posição, indexação, histórico, trends) nunca
+renderizaram em nenhum navegador, desde a Fase 6.
+
+**Causa:** as constantes do Chart.js são declaradas com `const` no escopo
+global do script, e `const` **não cria propriedade em `window`** — então
+guards como `if (window.HIST_DATA && ...)` eram sempre `undefined`/falsos e
+nenhum `new Chart()` executava. Os testes da Fase 6 validavam o HTML como
+string em Python; o JS nunca tinha sido executado de fato.
+
+**Correção:** guards passam a referenciar as constantes diretamente
+(`if (POS_DATA)`, `if (HIST_DATA && ...)` etc. — sempre declaradas, valem
+`null` sem dados). Validado executando o script do dashboard real no Node com
+stub do Chart.js: os 4 gráficos instanciam (histórico com 8 séries, trends
+com 6 linhas). Regressão: testes garantem que `_JS` não contém `window.X`.
+`py -m unittest discover` → **183 testes OK**
+
+---
+
 ## Projeto Completo
 
 ## Dependências instaladas

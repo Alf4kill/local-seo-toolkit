@@ -158,8 +158,13 @@ function safeChart(id, cfg) {
     new Chart(el, cfg);
 }
 
+// NOTA (bugfix): as constantes são declaradas com `const` no escopo global,
+// e `const` NÃO cria propriedade em `window` — `window.POS_DATA` era sempre
+// undefined e NENHUM gráfico renderizava. Os guards referenciam as
+// constantes diretamente (sempre declaradas; valem null quando sem dados).
+
 // Posicionamento — barras horizontais
-if (window.POS_DATA) {
+if (POS_DATA) {
     safeChart('chart-pos', {
         type: 'bar',
         data: {
@@ -183,7 +188,7 @@ if (window.POS_DATA) {
 }
 
 // Indexação — doughnut
-if (window.IDX_DATA) {
+if (IDX_DATA) {
     safeChart('chart-idx', {
         type: 'doughnut',
         data: {
@@ -203,7 +208,7 @@ if (window.IDX_DATA) {
 }
 
 // Histórico — linhas
-if (window.HIST_DATA && HIST_DATA.datasets.length > 0) {
+if (HIST_DATA && HIST_DATA.datasets.length > 0) {
     safeChart('chart-hist', {
         type: 'line',
         data: HIST_DATA,
@@ -223,8 +228,34 @@ if (window.HIST_DATA && HIST_DATA.datasets.length > 0) {
     });
 }
 
-// Trends — barras horizontais
-if (window.TRENDS_DATA && TRENDS_DATA.labels.length > 0) {
+// Trends — linha (fonte GSC, P5: impressões/dia) ou barras (pytrends, legado)
+if (TRENDS_DATA && TRENDS_DATA.mode === 'line' && TRENDS_DATA.series.length > 0) {
+    safeChart('chart-trends', {
+        type: 'line',
+        data: {
+            labels: TRENDS_DATA.dates,
+            datasets: TRENDS_DATA.series.map(s => ({
+                label: s.label,
+                data: s.values,
+                borderColor: s.color,
+                backgroundColor: 'transparent',
+                borderWidth: s.site ? 2.5 : 1.2,
+                pointRadius: 0,
+                tension: 0.25,
+            }))
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: true, labels: { boxWidth: 14, font: { size: 10 } } } },
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Impressões/dia' } },
+                x: { ticks: { maxTicksLimit: 12, font: { size: 9 } } }
+            }
+        }
+    });
+} else if (TRENDS_DATA && TRENDS_DATA.labels && TRENDS_DATA.labels.length > 0) {
     safeChart('chart-trends', {
         type: 'bar',
         data: {
@@ -305,12 +336,32 @@ def _hist_chart_data(historico: dict) -> dict:
 
 
 def _trends_chart_data(trends_data: dict) -> dict:
+    # P5 — fonte GSC: gráfico de LINHA com as séries diárias (site + top queries)
+    is_gsc = any(isinstance(td, dict) and td.get("source") == "gsc"
+                 for td in trends_data.values())
+    if is_gsc:
+        from core.analytics import SITE_TREND_KEY
+        dates = next((td.get("dates") for td in trends_data.values()
+                      if td.get("dates")), None) or []
+        palette = ["#1F4E79", "#e07b39", "#2d8c5e", "#b03030", "#7b5cb8", "#3a9fbf"]
+        series = [
+            {
+                "label":  kw[:35],
+                "values": td.get("values", []),
+                "color":  palette[i % len(palette)],
+                "site":   kw == SITE_TREND_KEY,
+            }
+            for i, (kw, td) in enumerate(list(trends_data.items())[:6])
+        ]
+        return {"mode": "line", "dates": dates, "series": series}
+
+    # pytrends (legado) — barras horizontais do interesse atual 0–100
     labels, latest, colors = [], [], []
     for kw, td in trends_data.items():
         labels.append(kw[:35])
         latest.append(td.get("latest", 0))
         colors.append(_TREND_HEX.get(td.get("trend", "stable"), "#888"))
-    return {"labels": labels, "latest": latest, "colors": colors}
+    return {"mode": "bar", "labels": labels, "latest": latest, "colors": colors}
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +383,27 @@ def _sec_saude(health: dict) -> str:
     ctr_pct  = comp["ctr"]
     note     = "" if health["has_indexation_data"] else \
         '<p class="note">* Indexação não executada — score baseado só em Posição + CTR (pesos re-normalizados).</p>'
+
+    # P4 — alertas por componente: o composto pode mascarar um componente
+    # crítico (caso real: 70.7 "Bom" com CTR 8.7/100). Caixa destacada,
+    # SEM esconder o composto — os dois aparecem juntos.
+    alerts_html = ""
+    alerts = health.get("component_alerts") or []
+    if alerts:
+        items = "".join(
+            f'<div style="margin:4px 0"><strong>{html.escape(a["label"])} '
+            f'{a["value"]:.1f}/100</strong> '
+            f'<span style="background:{"#842029" if a["severity"] == "critico" else "#b06000"};'
+            f'color:#fff;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700">'
+            f'{html.escape(a["severity"].upper())}</span><br>'
+            f'<span style="font-size:12px">{html.escape(a["message"])}</span></div>'
+            for a in alerts
+        )
+        alerts_html = f"""
+  <div style="background:#fdecea;border:1px solid #f5c2c7;border-left:4px solid #dc3545;border-radius:6px;padding:10px 14px;margin-top:12px;color:#842029">
+    <strong>⚠ Componente(s) crítico(s) abaixo do score geral</strong> — o número composto não conta a história toda:
+    {items}
+  </div>"""
 
     return f"""
 <section id="saude">
@@ -358,6 +430,7 @@ def _sec_saude(health: dict) -> str:
       <span class="comp-val">{ctr_pct:.1f}</span>
     </div>
   </div>
+  {alerts_html}
   {note}
 </section>"""
 
@@ -482,6 +555,24 @@ def _sec_historico(historico: dict) -> str:
 def _sec_trends(trends_data: dict) -> str:
     if not trends_data:
         return ""
+
+    # P5 — fonte GSC (padrão) vs pytrends (legado): rótulos honestos por fonte
+    is_gsc = any(isinstance(td, dict) and td.get("source") == "gsc"
+                 for td in trends_data.values())
+    if is_gsc:
+        days  = len(next(iter(trends_data.values())).get("values", []))
+        title = f"📊 Tendências de demanda — GSC ({days} dias)"
+        note  = ('<p style="color:#666;font-size:12px;margin-bottom:10px">'
+                 'Impressões/dia do <strong>próprio site</strong> na busca '
+                 '(dimensão <code>date</code> da Search Analytics API). Tendência = '
+                 'média do 1º terço vs último terço do período. Não é o índice '
+                 'global 0–100 do Google Trends.</p>')
+        hdr_peak, hdr_latest = "Pico (impr./dia)", "Média recente"
+    else:
+        title = "📊 Tendências Google Trends (12 meses)"
+        note  = ""
+        hdr_peak, hdr_latest = "Pico", "Atual"
+
     rows = "".join(
         f'<tr><td>{html.escape(kw)}</td>'
         f'<td style="color:{_TREND_HEX.get(td["trend"],"#888")};font-weight:700">'
@@ -492,10 +583,11 @@ def _sec_trends(trends_data: dict) -> str:
     )
     return f"""
 <section id="trends">
-  <h2>📊 Tendências Google Trends (12 meses)</h2>
+  <h2>{title}</h2>
+  {note}
   <div class="chart-wrap"><canvas id="chart-trends"></canvas></div>
   <table style="margin-top:16px">
-    <thead><tr><th>Keyword</th><th>Tendência</th><th>Pico</th><th>Atual</th></tr></thead>
+    <thead><tr><th>Keyword</th><th>Tendência</th><th>{hdr_peak}</th><th>{hdr_latest}</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
 </section>"""
@@ -533,6 +625,77 @@ def _sec_canibalizacao(cannibalization: list) -> str:
   <p style="color:#666;font-size:12px;margin-bottom:14px">{total} keyword(s) com 2+ páginas competindo. Consolidar ou diferenciar o conteúdo.</p>
   {groups_html}
   {note}
+</section>"""
+
+
+def _sec_plano_301(plan: dict) -> str:
+    """Seção do plano de consolidação 301 (P2). Sempre marcada como SUGESTÃO."""
+    if not plan or not plan.get("redirects"):
+        return ""
+
+    groups_html = ""
+    for g in plan["groups"][:20]:
+        can = g["canonical"]
+        rows = (
+            f'<tr style="background:#eef7ee">'
+            f'<td style="font-weight:700;color:#1e7e34;width:90px">MANTER</td>'
+            f'<td style="font-family:monospace;font-size:11px">{html.escape(can["url"])}</td>'
+            f'<td style="text-align:right">{can.get("clicks", 0):,}</td>'
+            f'<td style="text-align:right">{can["position"]:.1f}</td></tr>'
+        )
+        for s in g["sources"]:
+            rows += (
+                f'<tr><td style="color:#b02a37;font-weight:700">301 →</td>'
+                f'<td style="font-family:monospace;font-size:11px">{html.escape(s["url"])}</td>'
+                f'<td style="text-align:right">{s.get("clicks", 0):,}</td>'
+                f'<td style="text-align:right">{s["position"]:.1f}</td></tr>'
+            )
+        sfg, sbg, slbl = _SEVERITY_BADGE.get(g.get("severity", "baixa"), ("#555", "#eee", "—"))
+        sev_badge = (
+            f'<span style="background:{sbg};color:{sfg};border-radius:10px;'
+            f'padding:1px 8px;font-size:10px;font-weight:700;margin-left:8px">{slbl}</span>'
+        )
+        groups_html += f"""
+    <div class="canib-group">
+      <div class="canib-header">🔀 {html.escape(g['query'])}{sev_badge}</div>
+      <table>
+        <thead><tr><th>Ação</th><th>URL</th><th>Cliques</th><th>Posição</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>"""
+
+    total_g = plan["total_groups"]
+    note = f'<p class="note">Exibindo 20 de {total_g} grupos.</p>' if total_g > 20 else ""
+
+    conflicts_html = ""
+    if plan.get("conflicts"):
+        items = "".join(f"<li>{html.escape(c)}</li>" for c in plan["conflicts"][:30])
+        more = (f'<p class="note">+{len(plan["conflicts"]) - 30} conflitos no CSV.</p>'
+                if len(plan["conflicts"]) > 30 else "")
+        conflicts_html = f"""
+  <details style="margin-top:12px">
+    <summary style="cursor:pointer;font-size:12px;color:#9c5700">
+      Conflitos entre grupos resolvidos automaticamente ({len(plan['conflicts'])})
+    </summary>
+    <ul style="font-size:11px;color:#666;margin:8px 0 0 18px">{items}</ul>
+    {more}
+  </details>"""
+
+    return f"""
+<section id="plano301">
+  <h2>🔀 Plano de Consolidação 301 <span style="font-size:13px;background:#fff3cd;color:#9c5700;border-radius:10px;padding:2px 10px;vertical-align:middle">SUGESTÃO</span></h2>
+  <div style="background:#fff3cd;border:1px solid #ffe69c;border-left:4px solid #ffc107;border-radius:6px;padding:10px 14px;font-size:12px;color:#664d03;margin-bottom:14px">
+    ⚠ <strong>Sugestão automática — não aplicar sem revisão humana.</strong>
+    {html.escape(plan.get('disclaimer', ''))}
+  </div>
+  <p style="color:#666;font-size:12px;margin-bottom:14px">
+    {plan['total_redirects']} redirect(s) sugerido(s) em {total_g} grupo(s).
+    Canônica escolhida por: cliques (desc) → posição (asc) → impressões (desc).
+    Arquivos prontos: <code>*_redirects.csv</code>, <code>*_redirects_apache.txt</code>, <code>*_redirects_nginx.txt</code> na pasta do domínio.
+  </p>
+  {groups_html}
+  {note}
+  {conflicts_html}
 </section>"""
 
 
@@ -656,7 +819,12 @@ def _sec_content_quality(content_results: dict) -> str:
         reasons = "".join(f"<li>{html.escape(r)}</li>" for r in cq.get("reasons", []))
         if not reasons:
             reasons = "<li>Sem alertas relevantes.</li>"
+        # P3 — keyword gatilho da densidade + fonte (query GSC / slug / n-grama)
+        _src_labels = {"query": "query GSC", "slug": "slug da URL", "ngram": "n-grama dominante"}
         dens_kw = html.escape(cq.get("densest_keyword") or "—")
+        src     = _src_labels.get(cq.get("density_source"))
+        if src and cq.get("densest_keyword"):
+            dens_kw += f" · {src}"
         ent     = cq.get("entity_count")
         ent_str = f" · {ent} entidades" if ent is not None else ""
         cards += f"""
@@ -739,6 +907,7 @@ def generate_dashboard(
     consolidated: "dict | None" = None,
     nlp_results: "dict | None" = None,
     content_results: "dict | None" = None,
+    consolidation_plan: "dict | None" = None,
 ) -> str:
     """
     Gera o HTML do dashboard como string.
@@ -772,6 +941,8 @@ def generate_dashboard(
         body += _sec_trends(trends_data)
     if cannibalization:
         body += _sec_canibalizacao(cannibalization)
+    if consolidation_plan and consolidation_plan.get("redirects"):
+        body += _sec_plano_301(consolidation_plan)
     if nlp_results:
         body += _sec_nlp(nlp_results)
     if content_results:
@@ -789,6 +960,8 @@ def generate_dashboard(
     if hist_data:            nav_items.append(("historico", "📅 Histórico"))
     if trends_data:          nav_items.append(("trends", "📊 Trends"))
     if cannibalization:      nav_items.append(("canibalizacao", "⚡ Canibalização"))
+    if consolidation_plan and consolidation_plan.get("redirects"):
+        nav_items.append(("plano301", "🔀 Plano 301"))
     if nlp_results:          nav_items.append(("nlp", "🧠 NLP"))
     if content_results:      nav_items.append(("conteudo", "🧪 Conteúdo"))
     if tracking["rows"]:     nav_items.append(("acompanhamento", "📓 Acompanhamento"))

@@ -18,6 +18,8 @@ from core.content_quality import (
     vocab_diversity,
     salience_concentration,
     target_keywords_for_url,
+    slug_phrase,
+    dominant_ngram,
 )
 
 
@@ -94,10 +96,135 @@ class TestVerdictLocal(unittest.TestCase):
         self.assertEqual(cq["flags"], [])
 
     def test_sem_keyword_alvo(self):
-        """Sem keyword-alvo: ainda avalia tamanho e diversidade, sem crashar."""
+        """
+        Sem keyword-alvo do GSC: o n-grama dominante ainda mede a densidade
+        (P3 — antes reportava 0% e dava veredito falsamente limpo).
+        No texto balanceado a keyword repete 4× ≈ 2% → continua ok.
+        """
         cq = analyze_content_quality(_balanced_text(), [])
-        self.assertIsNone(cq["densest_keyword"])
-        self.assertEqual(cq["keyword_density"], 0.0)
+        self.assertEqual(cq["densest_keyword"], "aquecedor industrial")
+        self.assertEqual(cq["density_source"], "ngram")
+        self.assertGreater(cq["keyword_density"], 0.0)
+        self.assertEqual(cq["verdict"], "ok")
+
+
+# ---------------------------------------------------------------------------
+# P3 — Densidade vs slug e n-grama dominante
+# ---------------------------------------------------------------------------
+
+class TestSlugPhrase(unittest.TestCase):
+
+    def test_slug_simples(self):
+        self.assertEqual(
+            slug_phrase("https://ex.com/aquecedor-industrial/"),
+            "aquecedor industrial",
+        )
+
+    def test_remove_stopwords_e_numeros(self):
+        self.assertEqual(
+            slug_phrase("https://ex.com/blog/aquecedor-de-agua-para-industria-2024/"),
+            "aquecedor agua industria",
+        )
+
+    def test_remove_extensao(self):
+        self.assertEqual(slug_phrase("https://ex.com/cane-corso-preco.html"),
+                         "cane corso preco")
+
+    def test_sem_slug_util(self):
+        self.assertIsNone(slug_phrase("https://ex.com/"))
+        self.assertIsNone(slug_phrase(None))
+        self.assertIsNone(slug_phrase("https://ex.com/2024/"))
+
+
+class TestDominantNgram(unittest.TestCase):
+
+    def test_detecta_bigrama_repetido(self):
+        text = ("cane corso e um cachorro grande. " * 6) + \
+               " ".join(f"w{i}" for i in range(100))
+        phrase, occ = dominant_ngram(text)
+        self.assertIn("cane corso", phrase)
+        self.assertGreaterEqual(occ, 4)
+
+    def test_abaixo_do_piso_retorna_none(self):
+        # bigrama repete só 2× (< NGRAM_MIN_COUNT) → ruído, não "dominante"
+        text = "cane corso aqui. cane corso ali. " + \
+               " ".join(f"w{i}" for i in range(100))
+        self.assertIsNone(dominant_ngram(text))
+
+    def test_ignora_ngrama_com_borda_stopword(self):
+        # "de agua" começa com stopword → não pode ser o n-grama dominante
+        text = ("tratamento de agua " * 5) + " ".join(f"w{i}" for i in range(100))
+        result = dominant_ngram(text)
+        self.assertIsNotNone(result)
+        phrase, _ = result
+        self.assertFalse(phrase.startswith("de "))
+        self.assertFalse(phrase.endswith(" de"))
+
+    def test_agrupa_acentos(self):
+        # "preço" (3×) e "preco" (2×) contam juntos: trigrama domina com 5 ocorrências
+        text = ("cane corso preço ótimo. " * 3) + ("cane corso preco bom. " * 2) + \
+               " ".join(f"w{i}" for i in range(80))
+        phrase, occ = dominant_ngram(text)
+        self.assertEqual(phrase, "cane corso preco")    # normalizado (sem acento)
+        self.assertEqual(occ, 5)
+
+
+class TestDensitySources(unittest.TestCase):
+
+    def test_pagina_slug_stuffed_sem_query_gsc_nao_e_ok(self):
+        """
+        O caso P3: página otimizada para o slug, SEM query GSC correspondente.
+        Antes: densidade 0% → veredito falsamente "ok". Agora: slug/n-grama
+        medem a densidade real e o veredito NÃO pode ser ok.
+        """
+        text = _stuffed_text(keyword="aquecedor industrial preco", kw_times=20)
+        cq = analyze_content_quality(
+            text, target_keywords=[],   # nenhuma query GSC
+            url="https://ex.com/aquecedor-industrial-preco/",
+        )
+        self.assertNotEqual(cq["verdict"], "ok")
+        self.assertIn(cq["density_source"], ("slug", "ngram"))
+        self.assertGreaterEqual(cq["keyword_density"], 3.0)
+        self.assertIn("aquecedor industrial preco", cq["densest_keyword"])
+
+    def test_pagina_limpa_continua_ok(self):
+        """Texto equilibrado com slug coerente não pode virar falso positivo."""
+        text = _balanced_text(keyword="aquecedor industrial", kw_times=4)
+        cq = analyze_content_quality(
+            text, ["aquecedor industrial"],
+            url="https://ex.com/aquecedor-industrial/",
+        )
+        self.assertEqual(cq["verdict"], "ok")
+        self.assertEqual(cq["flags"], [])
+
+    def test_slug_com_acento_no_texto(self):
+        """Slug sem acento ("preco") casa com texto acentuado ("preço")."""
+        words = [f"palavra{i}" for i in range(400)]
+        for j in range(18):
+            words[j * 20] = "cane corso preço"
+        text = " ".join(words)
+        cq = analyze_content_quality(
+            text, [], url="https://ex.com/cane-corso-preco/",
+        )
+        self.assertGreaterEqual(cq["keyword_density"], 5.0)
+        self.assertNotEqual(cq["verdict"], "ok")
+
+    def test_empate_prioriza_query_gsc(self):
+        """Mesma densidade por query e por n-grama → fonte reportada é a query."""
+        text = _stuffed_text(keyword="aquecedor industrial", kw_times=25)
+        cq = analyze_content_quality(text, ["aquecedor industrial"])
+        self.assertEqual(cq["density_source"], "query")
+
+    def test_reason_menciona_keyword_gatilho(self):
+        """A explicação do veredito precisa dizer qual keyword disparou (P3)."""
+        text = _stuffed_text(keyword="aquecedor industrial preco", kw_times=20)
+        cq = analyze_content_quality(
+            text, [], url="https://ex.com/aquecedor-industrial-preco/",
+        )
+        density_reasons = [r for r in cq["reasons"] if "Densidade" in r]
+        self.assertTrue(density_reasons)
+        self.assertTrue(any("aquecedor industrial preco" in r for r in density_reasons))
+        self.assertTrue(any("slug da URL" in r or "n-grama" in r for r in density_reasons))
 
 
 # ---------------------------------------------------------------------------

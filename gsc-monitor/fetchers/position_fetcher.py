@@ -234,3 +234,105 @@ def fetch_query_positions(
 
     print(f"[position_fetcher] {len(rows)} combinações query+URL obtidas.")
     return rows
+
+
+# ---------------------------------------------------------------------------
+# P5 — Tendências first-party via dimensão `date` do GSC
+# ---------------------------------------------------------------------------
+#
+# Substitui o pytrends como fonte padrão: oficial, sem rate-limit, e mede a
+# demanda do PRÓPRIO site (impressões/dia na busca) em vez do índice global
+# 0–100 do Google Trends. O pytrends continua disponível como legado
+# (--trends-source pytrends).
+
+DAYS_BACK_TRENDS = 90   # janela das tendências (≈ 3 meses → terços de ~30 dias)
+
+
+def fetch_date_trends(
+    service,
+    domain: str,
+    use_cache: bool = True,
+    days_back: int = DAYS_BACK_TRENDS,
+) -> dict:
+    """
+    Consulta a Search Analytics em duas passadas:
+      1. dimensions ["date"]          — série diária do site inteiro
+      2. dimensions ["date","query"]  — série diária por query
+
+    Cache: date_trends_{start}_{end}.json — TTL 24h (core.cache).
+
+    Retorna (bruto — a classificação fica em core.analytics.compute_date_trends):
+    {
+        "start_date": str, "end_date": str,
+        "site_rows":  [{"date", "clicks", "impressions"}, ...],
+        "query_rows": [{"date", "query", "clicks", "impressions"}, ...],
+    }
+    """
+    from core.cache import get_date_trends_cache, set_date_trends_cache
+
+    site_url   = _build_site_url(domain)
+    cache_site = _normalize_domain(domain)
+    start_date, end_date = _build_date_range(days_back)
+
+    if use_cache:
+        cached = get_date_trends_cache(cache_site, start_date, end_date)
+        if cached is not None:
+            print(f"[position_fetcher] [CACHE] Tendências por data carregadas "
+                  f"({len(cached.get('site_rows', []))} dias).")
+            return cached
+
+    print(f"[position_fetcher] Consultando tendências por data "
+          f"({start_date} a {end_date})...")
+
+    def _query(dimensions: list) -> list:
+        body = {
+            "startDate":  start_date,
+            "endDate":    end_date,
+            "dimensions": dimensions,
+            "rowLimit":   ROW_LIMIT,
+            "dataState":  "final",
+        }
+        try:
+            response = (
+                service.searchanalytics()
+                .query(siteUrl=site_url, body=body)
+                .execute()
+            )
+        except HttpError as exc:
+            print(f"[position_fetcher] ERRO HTTP em {dimensions}: "
+                  f"{exc.status_code} — {exc.reason}")
+            raise
+        return response.get("rows", [])
+
+    site_rows = [
+        {
+            "date":        row["keys"][0],
+            "clicks":      int(row.get("clicks", 0)),
+            "impressions": int(row.get("impressions", 0)),
+        }
+        for row in _query(["date"])
+    ]
+
+    query_rows = [
+        {
+            "date":        row["keys"][0],
+            "query":       row["keys"][1],
+            "clicks":      int(row.get("clicks", 0)),
+            "impressions": int(row.get("impressions", 0)),
+        }
+        for row in _query(["date", "query"])
+    ]
+
+    data = {
+        "start_date": start_date,
+        "end_date":   end_date,
+        "site_rows":  site_rows,
+        "query_rows": query_rows,
+    }
+
+    if use_cache:
+        set_date_trends_cache(cache_site, start_date, end_date, data)
+
+    print(f"[position_fetcher] {len(site_rows)} dias; "
+          f"{len(query_rows)} linhas date×query.")
+    return data

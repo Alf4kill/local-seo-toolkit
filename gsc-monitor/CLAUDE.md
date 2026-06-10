@@ -53,14 +53,19 @@ py app.py
 
 # CLI posicionamento (flags combináveis)
 py posicao.py --site www.exemplo.com.br --excel --queries --content --nlp
-#   --queries   canibalização        --trends   Google Trends (pytrends)
+#   --queries   canibalização        --trends   demanda via GSC date (P5)
 #   --content   qualidade de conteúdo (Move 1)  --nlp  entidades NLP (cota)
-#   --csv --txt --no-cache --api-key KEY
+#   --trends-source pytrends  (legado)  --csv --txt --no-cache --api-key KEY
 
 # CLI indexação (cuidado com a cota 2.000/dia — use --limit ao testar)
 py main.py --site www.exemplo.com.br --limit 10
 
-# Testes  (104 testes; rode da pasta gsc-monitor/)
+# Batch headless (posições + queries + conteúdo por site; erros não abortam)
+py posicao.py --batch sites.txt --batch-report
+#   sites.txt: um domínio/linha, # comenta (modelo: sites.example.txt)
+#   --batch-report grava relatorios/_batch/YYYY-MM-DD_resumo.csv
+
+# Testes  (183 testes; rode da pasta gsc-monitor/)
 py -m unittest discover -s tests -t .
 ```
 
@@ -109,14 +114,30 @@ run**; `historico_posicao.json` acumula até 30 snapshots por domínio.
   os pesos são **re-normalizados** para Posição/CTR (0.667/0.333) — nunca presume
   50. Grades: Excelente ≥80, Bom ≥60, Regular ≥40, Crítico <40. **O valor está na
   decomposição, não no número composto** (ex.: exemplo 70.7 "Bom" mas CTR
-  8.7/100 = o problema real).
+  8.7/100 = o problema real). **P4**: componente < 40 gera `component_alerts`
+  (severity critico < 20 / alto < 40, mensagem pt-BR) — terminal, badge
+  vermelho na GUI, sheet Resumo e caixa no dashboard. O composto nunca é
+  suprimido: os dois aparecem juntos.
 - **Canibalização** só conta URLs que competem de fato (`impressões≥10`,
   `posição≤30`); campo `severity` alta/média/baixa por impressões em disputa.
+- **Plano 301 (P2)**: `build_consolidation_plan` transforma a canibalização em
+  SUGESTÃO de redirects — canônica por cliques desc → posição asc → impressões
+  desc; conflitos entre grupos resolvidos por prioridade de severidade (sem
+  cadeias/ciclos por construção). Artefatos: `*_redirects.csv` + blocos
+  Apache/nginx (`.txt`, ASCII), sheet "Plano 301", seção no dashboard. Todos os
+  outputs carregam o aviso de sugestão (regra de honestidade). Gerado sempre
+  que há canibalização (requer `--queries`; no batch, automático).
 - **Qualidade de conteúdo** (`content_quality.py`): sinais LOCAIS sem cota
   (word_count, keyword_density, exact_repetitions, vocab_diversity) + sinais NLP
   opcionais (salience_concentration, entity_count, classified, target_in_salient).
   Veredito conservador: `ok / atencao / over_otimizado / raso`. Keyword-alvo vem
   das queries reais do GSC (`target_keywords_for_url`).
+- **Densidade em 3 fontes (P3)**: `keyword_density` = máximo entre query GSC,
+  frase do slug (`slug_phrase`, sem stopwords, casa acentos) e n-grama 2–3
+  dominante (`dominant_ngram`, piso de 4 repetições, bordas sem stopword).
+  Fecha o buraco "página otimizada pro slug reporta 0% e parece limpa".
+  `density_source` diz qual fonte disparou; as reasons citam o gatilho.
+  Empate: query > slug > n-grama. Thresholds inalterados (conservador).
 - **Loop de medição (Move 2)**: cada snapshot guarda também as métricas de
   conteúdo; `build_content_tracking` cruza posição × veredito ao longo do tempo
   (Δ desde o baseline). É como se responde "PLN ajuda?".
@@ -186,18 +207,18 @@ loop do Move 2. Baseline de 8 URLs gravado em 2026-06-02.
 ## 6. Opções de refino e upgrade (próximos passos)
 
 ### Quick wins (baixo esforço, alto valor)
-- **Densidade vs keyword do slug / n-grama mais repetido.** Hoje a densidade usa
-  a query natural do GSC, então páginas otimizadas para o slug aparecem com 0%
-  (falsa sensação de "limpo"). Medir também contra o slug e o n-grama dominante.
-- **Alertas por componente do health score.** O composto "Bom" mascarou o CTR
-  8.7/100 da exemplo. Emitir alerta quando 1 componente é crítico mesmo com
-  score geral ok.
+- ~~**Densidade vs keyword do slug / n-grama mais repetido.**~~ — FEITO
+  (2026-06-09, P3): densidade agora é o máximo entre query GSC, slug e n-grama
+  dominante, com `density_source` e gatilho nas explicações.
+- ~~**Alertas por componente do health score.**~~ — FEITO (2026-06-09, P4):
+  `component_alerts` em todas as superfícies; composto nunca suprimido.
 - **`severity`/tracking no Excel.** O acompanhamento (Move 2) só está no dashboard
   e terminal; falta uma aba no Excel.
 
 ### Médio
-- **Trend first-party via dimensão `date` do GSC** (substituir pytrends): oficial,
-  free, sem rate-limit, mais relevante que o Trends global. Recomendado.
+- ~~**Trend first-party via dimensão `date` do GSC**~~ — FEITO (2026-06-10, P5):
+  `--trends` agora usa GSC por padrão (90 dias, impressões/dia, terços);
+  pytrends virou legado via `--trends-source pytrends`.
 - **Limpeza de NLP agnóstica a template.** `nlp_analyzer._NOISE_SECTION_CLASSES`
   é hardcoded para o template de OUTRA empresa (site em `E:\projetos\site-exemplo`);
   não generaliza para os 100+ sites. Mover para config por-site + fallback
@@ -216,8 +237,12 @@ loop do Move 2. Baseline de 8 URLs gravado em 2026-06-02.
 - **GUI: barra de progresso + cancelar** (o `(idx/total)` já é emitido).
 - **Config central** para constantes hardcoded (DAYS_BACK, geo="BR", benchmarks
   de CTR, thresholds de canibalização/conteúdo).
-- **Batch multi-domínio / modo headless** — só se um dia for escalar (Direction B
-  do plano estratégico). Hoje a direção é **A: aprofundar a ferramenta local**.
+- ~~**Batch multi-domínio / modo headless**~~ — FEITO (2026-06-09): `--batch
+  sites.txt` roda o pipeline padrão (posições + queries + conteúdo) por site com
+  isolamento de erros; `--batch-report` consolida em `relatorios/_batch/`.
+  Orquestrador puro em `core/batch.py` (testável com mocks); pipeline extraído
+  para `posicao.run_pipeline()` (levanta `PipelineError` em vez de sys.exit).
+  Agendamento semanal via Task Scheduler documentado no README.
 
 > Regra ao evoluir: corrigir correção/honestidade antes de adicionar features;
 > manter tudo em free tier / local; rodar `py -m unittest discover -s tests -t .`

@@ -8,6 +8,9 @@ google_api_key.txt
 historico.json
 relatorios/
 
+# Lista de sites do modo batch (contém domínios reais — use sites.example.txt)
+sites.txt
+
 # Python
 __pycache__/
 *.py[cod]

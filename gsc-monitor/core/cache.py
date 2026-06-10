@@ -158,6 +158,31 @@ def set_query_cache(site: str, start_date: str, end_date: str, rows: list) -> No
     print(f"[cache] Queries salvas em cache: {os.path.basename(path)}")
 
 
+# ---------------------------------------------------------------------------
+# Cache de tendências por data (P5 — Search Analytics, dimensões [date] e
+# [date, query]). Substitui o pytrends como fonte padrão de tendências.
+# ---------------------------------------------------------------------------
+
+TTL_DATE_TRENDS_HOURS = 24  # 1 dia novo de dados por dia — TTL curto
+
+
+def get_date_trends_cache(site: str, start_date: str, end_date: str) -> "dict | None":
+    """Retorna o dict cacheado de fetch_date_trends, ou None se expirado."""
+    key   = f"date_trends_{start_date}_{end_date}"
+    entry = _read_entry(_cache_path(site, key))
+    if entry is None or not _is_fresh(entry, TTL_DATE_TRENDS_HOURS):
+        return None
+    return entry["data"]
+
+
+def set_date_trends_cache(site: str, start_date: str, end_date: str, data: dict) -> None:
+    """Persiste o resultado bruto de fetch_date_trends no cache."""
+    key  = f"date_trends_{start_date}_{end_date}"
+    path = _cache_path(site, key)
+    _write_entry(path, data)
+    print(f"[cache] Tendências por data salvas em cache: {os.path.basename(path)}")
+
+
 def set_inspect_cache(site: str, date_str: str, url: str, result: dict) -> None:
     """
     Persiste o resultado de inspeção de uma URL no cache do dia de forma

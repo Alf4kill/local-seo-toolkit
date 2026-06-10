@@ -5,15 +5,26 @@ Uso básico:
     python posicao.py --site exemplo.com.br
 
 Opções:
-    --site     Domínio a analisar (obrigatório).
+    --site     Domínio a analisar.
                Ex: exemplo.com.br  ou  sc-domain:exemplo.com.br
 
     --txt      Salva relatório legível em .txt além do JSON.
+
+    --batch ARQUIVO
+               Modo lote (headless): roda o pipeline padrão (posições +
+               queries + qualidade de conteúdo) para cada domínio listado
+               no arquivo (um por linha; linhas com # são comentários).
+               Erros em um site não interrompem os demais.
+
+    --batch-report
+               Junto com --batch: grava resumo consolidado do lote em
+               relatorios/_batch/YYYY-MM-DD_resumo.csv
 
 Exemplos:
     python posicao.py --site www.exemplo.com.br
     python posicao.py --site www.exemplo.com.br --txt
     python posicao.py --site sc-domain:exemplo.com.br --txt
+    python posicao.py --batch sites.txt --batch-report
 """
 
 import sys
@@ -41,12 +52,14 @@ from reporters.position_reporter import build_position_report, print_position_re
 from core.storage import (
     save_position_report, save_position_txt, save_excel_report, save_csv_posicao,
     append_historico_posicao, load_historico_posicao, load_latest_consolidated,
-    save_dashboard, save_nlp_report,
+    save_dashboard, save_nlp_report, save_redirects_csv, save_redirects_txt,
 )
 from core.analytics import (
     calculate_health_score, print_health_score,
     detect_orphan_pages, print_orphan_pages,
     detect_cannibalization, print_cannibalization,
+    build_consolidation_plan, print_consolidation_plan,
+    build_htaccess_block, build_nginx_block,
 )
 from fetchers.knowledge_graph import search_entity, print_kg_result, load_api_key
 
@@ -57,11 +70,27 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--site",
-        required=True,
+        default=None,
         help=(
             "Domínio a analisar. Ex: exemplo.com.br  "
             "ou sc-domain:exemplo.com.br para Domain Property."
         ),
+    )
+    parser.add_argument(
+        "--batch",
+        default=None,
+        metavar="ARQUIVO",
+        help=(
+            "Modo lote headless: arquivo com um domínio por linha "
+            "(linhas iniciadas com # são comentários). Roda o pipeline padrão "
+            "(posições + queries + conteúdo) para cada site, sem abortar em erros."
+        ),
+    )
+    parser.add_argument(
+        "--batch-report",
+        dest="batch_report",
+        action="store_true",
+        help="Com --batch: grava resumo do lote em relatorios/_batch/YYYY-MM-DD_resumo.csv",
     )
     parser.add_argument(
         "--txt",
@@ -92,7 +121,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--trends",
         action="store_true",
-        help="Busca tendências Google Trends para as top 10 keywords (requer pytrends).",
+        help="Tendências de demanda: por padrão via dimensão date do GSC "
+             "(oficial, específico do site). Use --trends-source para o legado.",
+    )
+    parser.add_argument(
+        "--trends-source",
+        dest="trends_source",
+        choices=["gsc", "pytrends"],
+        default="gsc",
+        help="Fonte das tendências: gsc (padrão, first-party, 90 dias) ou "
+             "pytrends (legado, não-oficial, índice global 12 meses).",
     )
     parser.add_argument(
         "--nlp",
@@ -111,7 +149,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="API key Google Cloud (KG, NLP). Alternativa: env GOOGLE_API_KEY ou google_api_key.txt.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if not args.site and not args.batch:
+        parser.error("informe --site DOMINIO ou --batch ARQUIVO.")
+    if args.site and args.batch:
+        parser.error("--site e --batch não podem ser usados juntos.")
+    if args.batch_report and not args.batch:
+        parser.error("--batch-report requer --batch.")
+
+    return args
 
 
 def _normalize_domain(site: str) -> str:
@@ -121,10 +168,43 @@ def _normalize_domain(site: str) -> str:
     return site.removeprefix("https://").removeprefix("http://").rstrip("/")
 
 
-def main() -> None:
-    args   = parse_args()
+class PipelineError(RuntimeError):
+    """Erro fatal em uma execução do pipeline (autenticação, sitemap, API)."""
+
+
+def run_pipeline(
+    site: str,
+    *,
+    txt: bool = False,
+    excel: bool = False,
+    csv: bool = False,
+    no_cache: bool = False,
+    queries: bool = False,
+    trends: bool = False,
+    trends_source: str = "gsc",
+    nlp: bool = False,
+    content: bool = False,
+    api_key: "str | None" = None,
+) -> dict:
+    """
+    Executa o pipeline completo de posicionamento para um site (sem GUI).
+
+    Mesmo fluxo do CLI: auth → sitemap → posições → relatório → analytics →
+    (queries/trends/nlp/conteúdo opcionais) → histórico → dashboard.
+
+    Levanta PipelineError em falhas fatais (em vez de sys.exit), para que o
+    modo batch possa isolar erros por site.
+
+    Retorna um resumo da execução:
+    {
+        "site", "date", "urls_total", "urls_with_data",
+        "health_score", "health_grade", "avg_position", "ctr",
+        "snapshot_count", "cannibalization_groups",
+        "content_verdicts": {"ok": n, "atencao": n, ...},
+    }
+    """
     today  = date.today().isoformat()
-    domain = _normalize_domain(args.site)
+    domain = _normalize_domain(site)
 
     print(f"\n=== GSC Posicionamento — {domain} — {today} ===\n")
 
@@ -133,29 +213,39 @@ def main() -> None:
     try:
         service = build_service()
     except FileNotFoundError as exc:
-        print(f"\n[ERRO] {exc}")
-        sys.exit(1)
+        raise PipelineError(str(exc)) from exc
 
     # 2. URLs do sitemap
     print("[posicao] Buscando URLs no sitemap...")
     try:
         urls = fetch_urls(domain)
     except RuntimeError as exc:
-        print(f"\n[ERRO] {exc}")
-        sys.exit(1)
+        raise PipelineError(str(exc)) from exc
 
     if not urls:
         print("[posicao] Nenhuma URL encontrada no sitemap. Encerrando.")
-        sys.exit(0)
+        historico_posicao = load_historico_posicao(domain)
+        return {
+            "site":                   domain,
+            "date":                   today,
+            "urls_total":             0,
+            "urls_with_data":         0,
+            "health_score":           None,
+            "health_grade":           None,
+            "avg_position":           None,
+            "ctr":                    None,
+            "snapshot_count":         len(historico_posicao.get("snapshots", [])),
+            "cannibalization_groups": None,
+            "content_verdicts":       {},
+        }
 
     print(f"[posicao] {len(urls)} URLs encontradas no sitemap.\n")
 
     # 3. Consulta Search Analytics
     try:
-        data = fetch_positions(service, args.site, urls, use_cache=not args.no_cache)
+        data = fetch_positions(service, site, urls, use_cache=not no_cache)
     except Exception as exc:
-        print(f"\n[ERRO] Falha ao consultar Search Analytics API: {exc}")
-        sys.exit(1)
+        raise PipelineError(f"Falha ao consultar Search Analytics API: {exc}") from exc
 
     # 4. Monta relatório
     report = build_position_report(domain, today, data)
@@ -180,47 +270,75 @@ def main() -> None:
     print_orphan_pages(orphans)
 
     # Salva API key se fornecida via --api-key
-    if args.api_key:
+    if api_key:
         from fetchers.knowledge_graph import save_api_key
-        save_api_key(args.api_key)
+        save_api_key(api_key)
 
     # 10. Fase 5a — Knowledge Graph (sempre, se API key disponível)
-    api_key   = args.api_key or load_api_key()
-    kg_result = search_entity(domain, api_key=api_key, use_cache=not args.no_cache)
+    api_key   = api_key or load_api_key()
+    kg_result = search_entity(domain, api_key=api_key, use_cache=not no_cache)
     print_kg_result(kg_result)
 
     # 11. Fetch de queries (se --queries, --trends ou --content)
     query_rows = None
-    if args.queries or args.trends or args.content:
+    if queries or trends or content:
         from fetchers.position_fetcher import fetch_query_positions
         try:
-            query_rows = fetch_query_positions(service, args.site, use_cache=not args.no_cache)
+            query_rows = fetch_query_positions(service, site, use_cache=not no_cache)
         except Exception as exc:
             print(f"\n[ERRO] Falha ao buscar queries: {exc}")
 
     # 12. Fase 4b — canibalização de keywords
     cannibalization = None
-    if args.queries and query_rows:
+    if queries and query_rows:
         cannibalization = detect_cannibalization(query_rows)
         print_cannibalization(cannibalization)
 
-    # 13. Fase 5b — tendências (pytrends)
+    # 12b. P2 — Plano de consolidação 301 (SUGESTÃO; derivado da canibalização)
+    consolidation_plan = None
+    if cannibalization:
+        consolidation_plan = build_consolidation_plan(cannibalization)
+        print_consolidation_plan(consolidation_plan)
+        if consolidation_plan["redirects"]:
+            save_redirects_csv(domain, today, consolidation_plan)
+            save_redirects_txt(
+                domain, today,
+                build_htaccess_block(consolidation_plan, today),
+                build_nginx_block(consolidation_plan, today),
+            )
+
+    # 13. Fase 5b / P5 — tendências de demanda
     trends_data = None
-    if args.trends and query_rows:
-        from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
-        top_kws = top_keywords_from_queries(query_rows)
-        if top_kws:
-            trends_data = fetch_trends(top_kws, domain, use_cache=not args.no_cache)
-            print_trends(trends_data)
+    if trends:
+        if trends_source == "pytrends":
+            # Legado (--trends-source pytrends): índice global do Google
+            # Trends via biblioteca não-oficial — frágil, mantido como opção.
+            if query_rows:
+                from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
+                top_kws = top_keywords_from_queries(query_rows)
+                if top_kws:
+                    trends_data = fetch_trends(top_kws, domain, use_cache=not no_cache)
+                    print_trends(trends_data)
+                else:
+                    print("[trends] Nenhuma keyword Top 10 encontrada para buscar tendências.")
         else:
-            print("[trends] Nenhuma keyword Top 10 encontrada para buscar tendências.")
+            # P5 — padrão: dimensão `date` do GSC (oficial, sem rate-limit,
+            # demanda REAL do próprio site em impressões/dia, 90 dias).
+            from fetchers.position_fetcher import fetch_date_trends
+            from core.analytics import compute_date_trends, print_date_trends
+            try:
+                raw_trends  = fetch_date_trends(service, site, use_cache=not no_cache)
+                trends_data = compute_date_trends(raw_trends)
+                print_date_trends(trends_data)
+            except Exception as exc:
+                print(f"\n[ERRO] Falha ao buscar tendências GSC: {exc}")
 
     # 14. Fase 5c — NLP (entidades, opt-in)
     nlp_results = None
-    if args.nlp:
+    if nlp:
         from fetchers.nlp_analyzer import analyze_opportunity_urls, print_nlp_results
         nlp_results = analyze_opportunity_urls(
-            report["urls"], domain, api_key=api_key, use_cache=not args.no_cache,
+            report["urls"], domain, api_key=api_key, use_cache=not no_cache,
         )
         print_nlp_results(nlp_results)
 
@@ -233,11 +351,11 @@ def main() -> None:
 
     # 14b. Move 1 — Diagnóstico de qualidade de conteúdo (opt-in)
     content_results = None
-    if args.content:
+    if content:
         from fetchers.content_fetcher import analyze_opportunity_content_quality
         content_results = analyze_opportunity_content_quality(
             report["urls"], domain, query_rows=query_rows,
-            nlp_results=nlp_results, use_cache=not args.no_cache,
+            nlp_results=nlp_results, use_cache=not no_cache,
         )
 
     # 14c. Fase 4c + Move 2 — histórico de posição por URL (com métricas de conteúdo)
@@ -250,11 +368,11 @@ def main() -> None:
     print_content_tracking(tracking)
 
     # 15. Salva .txt se solicitado
-    if args.txt:
+    if txt:
         save_position_txt(domain, today, data, report)
 
     # 16. Gera Excel se solicitado
-    if args.excel:
+    if excel:
         from reporters.excel_reporter import generate_excel
         hist_for_excel = (
             historico_posicao
@@ -272,11 +390,12 @@ def main() -> None:
             query_rows=query_rows,
             nlp_results=nlp_results if nlp_results else None,
             content_results=content_results,
+            consolidation_plan=consolidation_plan,
         )
         save_excel_report(domain, today, wb)
 
     # 17. Salva .csv se solicitado
-    if args.csv:
+    if csv:
         save_csv_posicao(domain, today, report)
 
     # 18. Dashboard HTML (sempre gerado)
@@ -292,10 +411,96 @@ def main() -> None:
         consolidated=consolidated,
         nlp_results=nlp_results if nlp_results else None,
         content_results=content_results,
+        consolidation_plan=consolidation_plan,
     )
     save_dashboard(domain, html)
 
     print("[posicao] Concluído.")
+
+    # 19. Resumo da execução (consumido pelo modo batch)
+    verdict_counts: dict = {}
+    if content_results:
+        for cq in content_results.values():
+            v = (cq or {}).get("verdict")
+            if v:
+                verdict_counts[v] = verdict_counts.get(v, 0) + 1
+
+    return {
+        "site":                   domain,
+        "date":                   today,
+        "urls_total":             report["summary"]["total_urls_sitemap"],
+        "urls_with_data":         report["summary"]["urls_with_data"],
+        "health_score":           health["score"],
+        "health_grade":           health["grade"],
+        "avg_position":           report["summary"]["avg_position_site"],
+        "ctr":                    report["summary"]["avg_ctr_percent"],
+        "snapshot_count":         len(historico_posicao.get("snapshots", [])),
+        "cannibalization_groups": len(cannibalization) if cannibalization is not None else None,
+        "content_verdicts":       verdict_counts,
+    }
+
+
+def _run_batch_mode(args: argparse.Namespace) -> None:
+    """Modo lote: roda o pipeline padrão para cada site do arquivo."""
+    from core.batch import parse_sites_file, run_batch, write_batch_report
+
+    try:
+        sites = parse_sites_file(args.batch)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"\n[ERRO] {exc}")
+        sys.exit(1)
+
+    def _pipeline(site: str) -> dict:
+        # Pipeline padrão do batch: posições + queries + qualidade de conteúdo
+        # (cache-aware). Demais flags do CLI são repassadas a cada site.
+        return run_pipeline(
+            site,
+            txt=args.txt,
+            excel=args.excel,
+            csv=args.csv,
+            no_cache=args.no_cache,
+            queries=True,
+            content=True,
+            trends=args.trends,
+            trends_source=args.trends_source,
+            nlp=args.nlp,
+            api_key=args.api_key,
+        )
+
+    results = run_batch(sites, _pipeline)
+
+    if args.batch_report:
+        path = write_batch_report(results, date.today().isoformat())
+        print(f"[batch] Relatório do lote salvo em: {path}")
+
+    # Código de saída: 0 se ao menos um site concluiu; 1 se todos falharam.
+    sys.exit(0 if any(r["ok"] for r in results) else 1)
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.batch:
+        _run_batch_mode(args)
+        return
+
+    try:
+        run_pipeline(
+            args.site,
+            txt=args.txt,
+            excel=args.excel,
+            csv=args.csv,
+            no_cache=args.no_cache,
+            queries=args.queries,
+            trends=args.trends,
+            trends_source=args.trends_source,
+            nlp=args.nlp,
+            content=args.content,
+            api_key=args.api_key,
+        )
+    except PipelineError as exc:
+        print(f"\n[ERRO] {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

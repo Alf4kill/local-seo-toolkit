@@ -235,12 +235,18 @@ class MainWindow:
         self._status_var = tk.StringVar(value="Pronto")
         self._time_var   = tk.StringVar(value="")
         self._health_var = tk.StringVar(value="")
+        self._alert_var  = tk.StringVar(value="")   # P4 — alertas por componente
 
         ttk.Label(inner, textvariable=self._status_var,
                   foreground="#444444").pack(side="left")
         self._health_label = ttk.Label(inner, textvariable=self._health_var,
                                        foreground="#444444", font=("", 9, "bold"))
         self._health_label.pack(side="left", padx=(20, 0))
+        # Badge vermelho (P4): componente crítico mascarado pelo score composto.
+        # Usa tk.Label (não ttk) para o fundo vermelho funcionar em qualquer tema.
+        self._alert_label = tk.Label(inner, textvariable=self._alert_var,
+                                     foreground="#ffffff", background="#b03030",
+                                     font=("", 9, "bold"), padx=8)
         ttk.Label(inner, textvariable=self._time_var,
                   foreground="#888888").pack(side="right")
 
@@ -361,6 +367,8 @@ class MainWindow:
         self._running      = True
         self._result_store = {}
         self._health_var.set("")
+        self._alert_var.set("")
+        self._alert_label.pack_forget()
         self._exec_btn.configure(state=tk.DISABLED, text="  Executando...  ")
         self._status_var.set(f"Executando — {params['site']}")
         self._time_var.set(f"Iniciado: {datetime.now():%H:%M:%S}")
@@ -389,6 +397,16 @@ class MainWindow:
                 "Crítico":   "#b03030",
             }
             self._health_label.config(foreground=_GRADE_COLORS.get(grade, "#444444"))
+
+            # P4 — badge vermelho: componente crítico mesmo com composto ok.
+            # O score geral continua exibido; o badge aponta o problema real.
+            alerts = health.get("component_alerts") or []
+            if alerts:
+                resumo = "  ·  ".join(
+                    f"{a['label']} {a['value']:.0f}/100" for a in alerts
+                )
+                self._alert_var.set(f"⚠ {resumo}")
+                self._alert_label.pack(side="left", padx=(14, 0))
 
     def _on_open_dashboard(self) -> None:
         """Abre o dashboard.html do domínio no navegador padrão."""

@@ -13,7 +13,13 @@ punição ou de ranqueamento. A Cloud Natural Language API ≠ algoritmo de busc
 
 Sinais LOCAIS (sem cota de API — calculados só a partir do texto):
   - word_count        : tamanho do texto editorial
-  - keyword_density   : % de ocorrências da keyword-alvo no texto
+  - keyword_density   : % de ocorrências da keyword-alvo no texto.
+                        P3: máximo entre TRÊS fontes — (a) queries reais do GSC,
+                        (b) o slug da URL convertido em frase, (c) o n-grama
+                        (2–3 palavras) dominante do texto. Sem isso, páginas
+                        otimizadas para o slug (sem query GSC correspondente)
+                        reportavam 0% e recebiam veredito "falsamente limpo".
+                        `density_source` informa qual fonte disparou.
   - exact_repetitions : nº de repetições exatas da keyword-alvo principal
   - vocab_diversity   : razão tipo/token (vocabulário variado vs. repetitivo)
 
@@ -28,6 +34,9 @@ realmente ranqueia) — ver target_keywords_for_url().
 """
 
 import re
+import unicodedata
+from collections import Counter
+from urllib.parse import urlparse, unquote
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +50,24 @@ EXACT_REPEAT_HIGH    = 8      # repetições exatas da head keyword
 VOCAB_DIVERSITY_LOW  = 0.35   # type/token abaixo disso = texto repetitivo
 SALIENCE_CONC_HIGH   = 0.55   # 1 entidade concentra > metade da saliência do topo
 MIN_ENTITIES_BREADTH = 4      # menos entidades distintas que isso = amplitude pobre
+NGRAM_MIN_COUNT      = 4      # n-grama precisa repetir ao menos isso para ser
+                              # considerado "dominante" (piso anti-ruído — P3)
+
+# Stopwords pt-BR para slug e bordas de n-grama (slugs não têm acento)
+_SLUG_STOPWORDS = frozenset({
+    "a", "o", "as", "os", "um", "uma", "uns", "umas",
+    "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
+    "e", "ou", "para", "pra", "por", "com", "sem", "sob", "sobre",
+    "ao", "aos", "que", "se", "seu", "sua", "seus", "suas",
+    "mais", "menos", "muito", "como", "qual", "onde", "quando",
+})
+
+# Rótulos legíveis da fonte da densidade (P3)
+_DENSITY_SOURCE_LABELS = {
+    "query": "query GSC",
+    "slug":  "slug da URL",
+    "ngram": "n-grama dominante",
+}
 
 
 # Rótulos legíveis por flag
@@ -115,6 +142,77 @@ def vocab_diversity(text: str) -> float:
 
 
 # ---------------------------------------------------------------------------
+# P3 — densidade vs slug da URL e n-grama dominante
+# ---------------------------------------------------------------------------
+
+def _normalize_accents(text: str) -> str:
+    """Remove acentos ("preço" → "preco") para casar texto com slugs sem acento."""
+    norm = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in norm if not unicodedata.combining(c))
+
+
+def slug_phrase(url: "str | None") -> "str | None":
+    """
+    Converte o slug (último segmento do path) em uma frase de keyword:
+    split em '-'/'_', remove stopwords e números soltos.
+
+    Ex.: https://ex.com/aquecedor-industrial-de-agua/ → "aquecedor industrial agua"
+    Retorna None se não houver slug útil.
+    """
+    if not url:
+        return None
+    path = urlparse(url).path
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        return None
+    slug = unquote(segments[-1])
+    slug = re.sub(r"\.(x?html?|php|aspx?|jsp)$", "", slug, flags=re.IGNORECASE)
+    words = [w for w in re.split(r"[-_]+", slug.lower()) if w]
+    words = [w for w in words if w not in _SLUG_STOPWORDS and not w.isdigit()]
+    return " ".join(words) if words else None
+
+
+def dominant_ngram(text: str, min_count: int = NGRAM_MIN_COUNT) -> "tuple | None":
+    """
+    Encontra o n-grama (2–3 palavras) mais repetido do texto — a keyword que a
+    página de fato martela, mesmo quando não corresponde a nenhuma query GSC
+    nem ao slug.
+
+    Regras anti-ruído (conservadoras):
+      - precisa repetir ≥ min_count vezes;
+      - não pode começar nem terminar com stopword ("de aquecedor" não conta);
+      - n-gramas só de números são ignorados;
+      - empates resolvidos pela maior cobertura de texto (ocorrências × n).
+
+    Acentos são normalizados ("preço" e "preco" contam juntos).
+    Retorna (frase, ocorrências) ou None.
+    """
+    tokens = [_normalize_accents(t) for t in _tokenize(text)]
+    if len(tokens) < 2:
+        return None
+
+    best = None  # (cobertura, n, ocorrências, frase)
+    for n in (2, 3):
+        counts = Counter(
+            tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1)
+        )
+        for gram, c in counts.items():
+            if c < min_count:
+                continue
+            if gram[0] in _SLUG_STOPWORDS or gram[-1] in _SLUG_STOPWORDS:
+                continue
+            if all(w.isdigit() for w in gram):
+                continue
+            cand = (c * n, n, c, " ".join(gram))
+            if best is None or cand > best:
+                best = cand
+
+    if best is None:
+        return None
+    return best[3], best[2]
+
+
+# ---------------------------------------------------------------------------
 # Sinais derivados do resultado NLP do Google (opcionais)
 # ---------------------------------------------------------------------------
 
@@ -182,6 +280,7 @@ def analyze_content_quality(
     text: str,
     target_keywords: "list | None" = None,
     nlp_result: "dict | None" = None,
+    url: "str | None" = None,
 ) -> dict:
     """
     Diagnostica a qualidade de conteúdo de um texto à luz de SEO.
@@ -191,6 +290,12 @@ def analyze_content_quality(
                       A 1ª é tratada como a head keyword.
     nlp_result      — opcional: {"entities": [...], "categories": [...]} do
                       nlp_analyzer. Habilita os sinais semânticos do Google.
+    url             — opcional (P3): URL da página; habilita a medição de
+                      densidade contra o slug.
+
+    A densidade reportada é o MÁXIMO entre três fontes (P3): queries GSC,
+    frase do slug e n-grama dominante — `density_source` diz qual disparou.
+    Em empate, a prioridade é query > slug > n-grama.
 
     Retorna um dict com métricas, flags, verdict e reasons (ver docstring do módulo).
     """
@@ -201,12 +306,32 @@ def analyze_content_quality(
     word_count = len(tokens)
     diversity  = vocab_diversity(text)
 
-    # Densidade: pega a maior entre as keywords-alvo
-    densest_kw, max_density, occ_at_max = None, 0.0, 0
+    # ── Densidade (P3): máximo entre query GSC, slug e n-grama dominante ────
+    # Ordem dos candidatos define a prioridade em empates (strict >).
+    candidates = []  # (densidade, ocorrências, keyword, fonte)
     for kw in target_keywords:
         d, occ = keyword_density(text, kw)
+        candidates.append((d, occ, kw, "query"))
+
+    slug_kw = slug_phrase(url)
+    if slug_kw:
+        # Slugs não têm acento — casa contra o texto normalizado
+        d, occ = keyword_density(
+            _normalize_accents(text), _normalize_accents(slug_kw)
+        )
+        candidates.append((d, occ, slug_kw, "slug"))
+
+    ngram = dominant_ngram(text)
+    if ngram:
+        phrase, occ = ngram
+        n_words = len(phrase.split())
+        d = round(occ * n_words / word_count * 100.0, 2) if word_count else 0.0
+        candidates.append((d, occ, phrase, "ngram"))
+
+    densest_kw, max_density, occ_at_max, density_source = None, 0.0, 0, None
+    for d, occ, kw, source in candidates:
         if d > max_density:
-            densest_kw, max_density, occ_at_max = kw, d, occ
+            densest_kw, max_density, occ_at_max, density_source = kw, d, occ, source
 
     exact_reps = _count_phrase(text.lower(), head_kw) if head_kw else 0
 
@@ -254,12 +379,23 @@ def analyze_content_quality(
     else:
         verdict = "ok"
 
-    reasons = [_FLAG_REASONS[f] for f in flags if f in _FLAG_REASONS]
+    # Reasons — para as flags de densidade, diz QUAL keyword disparou e de
+    # onde ela veio (P3: a explicação do veredito aponta o gatilho)
+    reasons = []
+    for f in flags:
+        msg = _FLAG_REASONS.get(f)
+        if msg is None:
+            continue
+        if f in ("densidade_alta", "densidade_muito_alta") and densest_kw:
+            src = _DENSITY_SOURCE_LABELS.get(density_source, density_source)
+            msg += f' Gatilho: "{densest_kw}" ({src}, {max_density:.1f}%).'
+        reasons.append(msg)
 
     return {
         "word_count":             word_count,
         "keyword_density":        max_density,
         "densest_keyword":        densest_kw,
+        "density_source":         density_source,
         "keyword_occurrences":    occ_at_max,
         "exact_repetitions":      exact_reps,
         "vocab_diversity":        diversity,
@@ -279,7 +415,11 @@ def print_content_quality(url: str, cq: dict) -> None:
     short = url if len(url) <= 60 else url[:57] + "..."
     print(f"\n  {short}")
     print(f"    {cq['verdict_label']}")
-    dens_kw = f" ('{cq['densest_keyword']}')" if cq["densest_keyword"] else ""
+    dens_kw = ""
+    if cq["densest_keyword"]:
+        src = _DENSITY_SOURCE_LABELS.get(cq.get("density_source"), "")
+        src_str = f" · {src}" if src else ""
+        dens_kw = f" ('{cq['densest_keyword']}'{src_str})"
     print(f"    palavras: {cq['word_count']:>5}   "
           f"densidade: {cq['keyword_density']:.1f}%{dens_kw}   "
           f"diversidade: {cq['vocab_diversity']:.2f}")
