@@ -70,6 +70,22 @@ class TestDiffHtml:
         assert "canonical" in out.lower()
         assert "c, d" in out
 
+    def test_campos_none_do_llm_nao_quebram(self):
+        """
+        Regressão (caso real, canilmansur via GUI): o LLM local devolveu
+        keyword_alvo: null e o html.escape(None) explodia com AttributeError.
+        dict.get(k, "") não protege — o default só vale se a chave NÃO existe.
+        """
+        c = {"diff": {"paginas": [
+                {"papel": None, "slug": "a", "keyword_alvo": None,
+                 "intencao": None, "titulo": None, "foco": None},
+                {"papel": "spoke", "slug": "b", "keyword_alvo": "kw2",
+                 "intencao": "x", "titulo": "t", "foco": "f"}],
+             "omitidas": ["c", None]}}
+        out = _diff_html(c)               # não pode levantar
+        assert "kw2" in out               # a página válida continua renderizada
+        assert "None" not in out          # null não vira texto "None" no HTML
+
 
 class TestCollisionsHtml:
 

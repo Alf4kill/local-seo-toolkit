@@ -8,6 +8,15 @@ consolidação). O "representante" é a página mais central, sugerida como can�
 import html as H
 
 
+def _esc(v) -> str:
+    """
+    html.escape à prova de None: campos vindos do LLM local podem chegar como
+    null no JSON (ex.: keyword_alvo) e dict.get(k, "") NÃO cobre isso — o
+    default só vale quando a chave NÃO EXISTE, não quando o valor é None.
+    """
+    return H.escape(str(v)) if v is not None else ""
+
+
 _LLM_BADGE = {
     "spun": ("#b03030", "#FFE0E0", "SPUN — mesmo texto reescrito"),
     "raso": ("#b06000", "#FFF2CC", "RASO — pouco conteúdo útil"),
@@ -20,10 +29,10 @@ def _llm_html(c: dict) -> str:
     l = c.get("llm")
     if not l:
         return ""
-    fg, bg, lbl = _LLM_BADGE.get(l.get("verdict"), ("#555", "#eee", l.get("verdict", "?")))
+    fg, bg, lbl = _LLM_BADGE.get(l.get("verdict"), ("#555", "#eee", l.get("verdict") or "?"))
     base   = H.escape(l.get("base_recomendada") or "")
     resumo = H.escape(l.get("resumo") or "")
-    gaps   = "".join(f"<li>{H.escape(g)}</li>" for g in (l.get("lacunas") or [])[:5])
+    gaps   = "".join(f"<li>{_esc(g)}</li>" for g in (l.get("lacunas") or [])[:5] if g)
     return (
         f'<div style="margin-top:8px;padding:8px 10px;background:{bg};border-radius:6px;font-size:12px">'
         f'<b style="color:{fg}">🤖 {H.escape(lbl)}</b>'
@@ -48,23 +57,24 @@ def _diff_html(c: dict) -> str:
         return ""
     rows = ""
     for p in d["paginas"]:
-        fg, bg, lbl = _PAPEL_BADGE.get(p.get("papel"), ("#555", "#eee", p.get("papel", "")))
+        # Campos do LLM podem vir None (JSON null) — _esc cobre todos.
+        fg, bg, lbl = _PAPEL_BADGE.get(p.get("papel"), ("#555", "#eee", p.get("papel") or ""))
         rows += (
             '<tr style="border-top:1px solid #e3edf9">'
             f'<td style="padding:4px 6px;vertical-align:top"><span style="background:{bg};color:{fg};'
-            f'padding:1px 6px;border-radius:4px;font-size:11px;font-weight:700">{H.escape(lbl)}</span></td>'
-            f'<td style="padding:4px 6px;font-family:monospace;font-size:11px;vertical-align:top">{H.escape(p.get("slug",""))}</td>'
-            f'<td style="padding:4px 6px;vertical-align:top"><b>{H.escape(p.get("keyword_alvo",""))}</b>'
-            f'<div style="color:#666;font-size:11px">{H.escape(p.get("intencao",""))}</div></td>'
-            f'<td style="padding:4px 6px;font-size:12px;vertical-align:top">{H.escape(p.get("titulo",""))}'
-            f'<div style="color:#777;margin-top:2px;font-size:11px">{H.escape(p.get("foco",""))}</div></td>'
+            f'padding:1px 6px;border-radius:4px;font-size:11px;font-weight:700">{_esc(lbl)}</span></td>'
+            f'<td style="padding:4px 6px;font-family:monospace;font-size:11px;vertical-align:top">{_esc(p.get("slug"))}</td>'
+            f'<td style="padding:4px 6px;vertical-align:top"><b>{_esc(p.get("keyword_alvo"))}</b>'
+            f'<div style="color:#666;font-size:11px">{_esc(p.get("intencao"))}</div></td>'
+            f'<td style="padding:4px 6px;font-size:12px;vertical-align:top">{_esc(p.get("titulo"))}'
+            f'<div style="color:#777;margin-top:2px;font-size:11px">{_esc(p.get("foco"))}</div></td>'
             '</tr>'
         )
     omit = ""
     if d.get("omitidas"):
         omit = (f'<div style="font-size:11px;color:#b06000;margin-top:6px">+{len(d["omitidas"])} '
                 f'página(s) sem intenção distinta → candidatas a <b>rel=canonical</b> (não 301): '
-                f'{H.escape(", ".join(d["omitidas"]))}</div>')
+                f'{_esc(", ".join(str(o) for o in d["omitidas"] if o))}</div>')
     return (
         '<div style="margin-top:8px;padding:8px 10px;background:#f3f8ff;border:1px solid #d6e4f5;border-radius:6px">'
         '<b style="color:#1F4E79;font-size:12px">🧩 Plano de diferenciação — manter todas, sem 301</b>'

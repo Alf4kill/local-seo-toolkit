@@ -112,6 +112,31 @@ def parse_args():
     return p.parse_args()
 
 
+def make_options(**overrides) -> argparse.Namespace:
+    """
+    Namespace com os MESMOS defaults do CLI, para chamadas programáticas
+    (ex.: GUI do app.py). Mantém os defaults em um lugar só.
+    """
+    opts = argparse.Namespace(
+        primeweb=None, folder=None, urls=None,
+        threshold=0.85, method="agglomerative", linkage="complete",
+        backend="auto", model=None, html=None, gsc=None,
+        llm=False, differentiate=False, linkgraph=False,
+        llm_backend="http", llm_url=None, llm_model=None, llm_max=8,
+        llm_unload=False, site_context=None,
+        min_chars=300, no_cache=False,
+    )
+    for k, v in overrides.items():
+        if not hasattr(opts, k):
+            raise TypeError(f"Opção desconhecida: {k}")
+        setattr(opts, k, v)
+    return opts
+
+
+class AnalysisError(RuntimeError):
+    """Erro fatal da análise (fonte inválida, páginas insuficientes etc.)."""
+
+
 def _make_llm_client(args):
     """Cria o cliente LLM local (http/Ollama por padrão, ou transformers/CPU). None se indisponível."""
     if args.llm_backend == "transformers":
@@ -128,10 +153,19 @@ def _make_llm_client(args):
     return client
 
 
-def main():
-    args = parse_args()
+def run_analysis(args) -> str:
+    """
+    Executa a análise completa (mesmo fluxo do CLI) e retorna o caminho do
+    relatório HTML gerado.
 
+    args: Namespace do parse_args() ou de make_options() — é assim que a GUI
+    (app.py) reutiliza exatamente o mesmo pipeline, sem segundo call site.
+
+    Levanta AnalysisError em falhas fatais (em vez de sys.exit), para que a
+    GUI possa exibir o erro sem encerrar o processo.
+    """
     # 1. Carrega textos
+    urls = []
     if args.primeweb:
         title = os.path.basename(os.path.normpath(args.primeweb))
         pages = load_from_primeweb(args.primeweb, min_chars=args.min_chars)
@@ -145,8 +179,9 @@ def main():
         pages = load_from_urls(urls, min_chars=args.min_chars)
 
     if len(pages) < 2:
-        print(f"[erro] Só {len(pages)} página(s) com texto suficiente — nada a agrupar.")
-        sys.exit(1)
+        raise AnalysisError(
+            f"Só {len(pages)} página(s) com texto suficiente — nada a agrupar."
+        )
 
     labels = list(pages.keys())
     texts = [pages[k] for k in labels]
@@ -292,6 +327,16 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"[analisar] Relatório salvo em: {out_path}")
+    return out_path
+
+
+def main():
+    args = parse_args()
+    try:
+        run_analysis(args)
+    except AnalysisError as exc:
+        print(f"[erro] {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

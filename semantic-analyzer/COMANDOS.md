@@ -3,6 +3,9 @@
 Referência rápida de **todas** as opções do `analisar.py` e exemplos prontos para
 copiar/colar. Para a visão geral da ferramenta, veja o [README](README.md).
 
+> 🖥️ Prefere janela em vez de terminal? `py app.py` abre a interface gráfica —
+> mesmas opções, mesmo pipeline (`analisar.run_analysis`), terminal integrado.
+
 > ⚠️ **Regra de ouro:** os exemplos genéricos usam caminhos reais desta máquina.
 > Nunca copie um exemplo que tenha `"..."` literal — o Python vai tentar abrir uma
 > pasta chamada `...` e quebrar com `FileNotFoundError: ...\include\parametros.php`.

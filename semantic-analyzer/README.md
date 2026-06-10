@@ -31,6 +31,20 @@ para o modo semântico de verdade.)
 
 ## Uso
 
+### Interface gráfica
+
+```powershell
+py app.py
+```
+
+Mesma janela integrada do gsc-monitor (terminal com output em tempo real,
+botões "Abrir pasta" e "Abrir relatório"). A GUI chama exatamente o pipeline
+do CLI (`analisar.run_analysis`) — sem lógica duplicada: tudo que o CLI faz, a
+janela faz, incluindo cruzamento GSC, julgamento LLM, diferenciação e grafo de
+links.
+
+### CLI
+
 > 📋 Referência completa das opções + exemplos prontos para copiar: **[COMANDOS.md](COMANDOS.md)**.
 
 ```powershell
