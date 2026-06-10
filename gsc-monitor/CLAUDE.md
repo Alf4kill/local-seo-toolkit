@@ -65,8 +65,8 @@ py posicao.py --batch sites.txt --batch-report
 #   sites.txt: um domínio/linha, # comenta (modelo: sites.example.txt)
 #   --batch-report grava relatorios/_batch/YYYY-MM-DD_resumo.csv
 
-# Testes  (183 testes; rode da pasta gsc-monitor/)
-py -m unittest discover -s tests -t .
+# Testes  (233 testes; rode da pasta gsc-monitor/)
+py -m pytest
 ```
 
 **Credenciais:** `client_secrets.json` (OAuth desktop) + `token.json` (gerado;
@@ -245,5 +245,5 @@ loop do Move 2. Baseline de 8 URLs gravado em 2026-06-02.
   Agendamento semanal via Task Scheduler documentado no README.
 
 > Regra ao evoluir: corrigir correção/honestidade antes de adicionar features;
-> manter tudo em free tier / local; rodar `py -m unittest discover -s tests -t .`
+> manter tudo em free tier / local; rodar `py -m pytest`
 > após cada mudança.

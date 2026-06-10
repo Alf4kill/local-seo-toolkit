@@ -15,27 +15,9 @@ import sys
 from collections import defaultdict
 from urllib.parse import urlparse
 
+from config import CANNIBAL_MAX_POSITION, CANNIBAL_MIN_IMPRESSIONS, HEALTH_WEIGHTS
 
-# ---------------------------------------------------------------------------
-# CTR esperado por posição (benchmark de mercado — idêntico ao excel_reporter)
-# ---------------------------------------------------------------------------
-
-_CTR_BENCHMARK = {
-    1: 28.5, 2: 15.7, 3: 11.0, 4: 8.0, 5: 7.2,
-    6: 5.1,  7: 4.0,  8: 3.2,  9: 2.8, 10: 2.5,
-}
-
-
-def _expected_ctr(position: float) -> float | None:
-    if position is None or position > 10:
-        return None
-    pos_floor = max(1, min(int(position), 10))
-    pos_ceil  = min(pos_floor + 1, 10)
-    frac      = position - int(position)
-    ctr_low   = _CTR_BENCHMARK[pos_floor]
-    ctr_high  = _CTR_BENCHMARK.get(pos_ceil, _CTR_BENCHMARK[10])
-    return ctr_low + frac * (ctr_high - ctr_low)
-
+from core.ctr import expected_ctr
 
 # ---------------------------------------------------------------------------
 # P4 — Alertas por componente do health score
@@ -46,27 +28,33 @@ def _expected_ctr(position: float) -> float | None:
 # explicação em português claro. O composto NUNCA é suprimido — os dois
 # aparecem juntos (regra de honestidade: a decomposição > o número único).
 
-COMPONENT_ALERT_THRESHOLD = 40.0   # componente abaixo disso gera alerta
-COMPONENT_CRITICAL_BELOW  = 20.0   # abaixo disso a severidade é "critico"
+COMPONENT_ALERT_THRESHOLD = 40.0  # componente abaixo disso gera alerta
+COMPONENT_CRITICAL_BELOW = 20.0  # abaixo disso a severidade é "critico"
 
 _COMPONENT_LABELS = {
     "indexation": "Indexação",
-    "position":   "Posicionamento",
-    "ctr":        "CTR vs benchmark",
+    "position": "Posicionamento",
+    "ctr": "CTR vs benchmark",
 }
 
 
 def _component_alert_message(component: str, value: float) -> str:
     """Explicação em pt-BR, sem jargão, do que o componente baixo significa."""
     if component == "indexation":
-        return (f"Só {value:.0f}% das páginas estão indexadas — boa parte do "
-                f"site nem aparece no Google.")
+        return (
+            f"Só {value:.0f}% das páginas estão indexadas — boa parte do "
+            f"site nem aparece no Google."
+        )
     if component == "position":
-        return (f"Posicionamento {value:.0f}/100 — as páginas com impressões "
-                f"ranqueiam muito longe da 1ª página (ou não há dados de posição).")
-    return (f"CTR {value:.0f}/100 vs benchmark — o site aparece na busca mas "
-            f"quase ninguém clica (títulos/descriptions fracos ou página "
-            f"errada para a intenção da busca).")
+        return (
+            f"Posicionamento {value:.0f}/100 — as páginas com impressões "
+            f"ranqueiam muito longe da 1ª página (ou não há dados de posição)."
+        )
+    return (
+        f"CTR {value:.0f}/100 vs benchmark — o site aparece na busca mas "
+        f"quase ninguém clica (títulos/descriptions fracos ou página "
+        f"errada para a intenção da busca)."
+    )
 
 
 def build_component_alerts(components: dict) -> list:
@@ -89,19 +77,22 @@ def build_component_alerts(components: dict) -> list:
         if value is None or value >= COMPONENT_ALERT_THRESHOLD:
             continue
         severity = "critico" if value < COMPONENT_CRITICAL_BELOW else "alto"
-        alerts.append({
-            "component": comp,
-            "label":     _COMPONENT_LABELS[comp],
-            "value":     value,
-            "severity":  severity,
-            "message":   _component_alert_message(comp, value),
-        })
+        alerts.append(
+            {
+                "component": comp,
+                "label": _COMPONENT_LABELS[comp],
+                "value": value,
+                "severity": severity,
+                "message": _component_alert_message(comp, value),
+            }
+        )
     return alerts
 
 
 # ---------------------------------------------------------------------------
 # 4d — Score de saúde do site
 # ---------------------------------------------------------------------------
+
 
 def _pos_component(position_report: dict) -> float:
     """
@@ -114,8 +105,7 @@ def _pos_component(position_report: dict) -> float:
     páginas que recebem impressões estão bem posicionadas.
     """
     with_data = [
-        r for r in position_report.get("urls", [])
-        if r["has_data"] and r["position"] is not None
+        r for r in position_report.get("urls", []) if r["has_data"] and r["position"] is not None
     ]
     if not with_data:
         return 0.0
@@ -135,7 +125,8 @@ def _ctr_component(position_report: dict) -> float:
     Retorna 50 (neutro) quando não há URLs na 1ª página para avaliar.
     """
     page1 = [
-        r for r in position_report.get("urls", [])
+        r
+        for r in position_report.get("urls", [])
         if r["has_data"] and r["position"] is not None and r["position"] <= 10
     ]
     if not page1:
@@ -143,7 +134,7 @@ def _ctr_component(position_report: dict) -> float:
 
     total, count = 0.0, 0
     for r in page1:
-        exp = _expected_ctr(r["position"])
+        exp = expected_ctr(r["position"])
         if exp and exp > 0:
             total += min(1.0, r["ctr"] / exp)
             count += 1
@@ -181,42 +172,48 @@ def calculate_health_score(
     pos = _pos_component(position_report)
     ctr = _ctr_component(position_report)
 
-    W_IDX, W_POS, W_CTR = 0.4, 0.4, 0.2
+    W_IDX = HEALTH_WEIGHTS["indexation"]
+    W_POS = HEALTH_WEIGHTS["position"]
+    W_CTR = HEALTH_WEIGHTS["ctr"]
 
     if consolidated is not None:
-        total   = consolidated.get("total_urls", 0)
+        total = consolidated.get("total_urls", 0)
         idx_pct = (
             consolidated.get("summary", {}).get("indexed", {}).get("percent", 0.0)
-            if total > 0 else 0.0
+            if total > 0
+            else 0.0
         )
-        score   = round(idx_pct * W_IDX + pos * W_POS + ctr * W_CTR, 1)
+        score = round(idx_pct * W_IDX + pos * W_POS + ctr * W_CTR, 1)
         has_idx = True
     else:
         idx_pct = None
         # Sem indexação: re-normaliza pesos para Posição + CTR (não inventa 50).
-        denom   = W_POS + W_CTR  # 0.6
-        score   = round(pos * (W_POS / denom) + ctr * (W_CTR / denom), 1)
+        denom = W_POS + W_CTR  # 0.6
+        score = round(pos * (W_POS / denom) + ctr * (W_CTR / denom), 1)
         has_idx = False
 
     grade = (
-        "Excelente" if score >= 80 else
-        "Bom"       if score >= 60 else
-        "Regular"   if score >= 40 else
-        "Crítico"
+        "Excelente"
+        if score >= 80
+        else "Bom"
+        if score >= 60
+        else "Regular"
+        if score >= 40
+        else "Crítico"
     )
 
     components = {
         "indexation": idx_pct,
-        "position":   pos,
-        "ctr":        ctr,
+        "position": pos,
+        "ctr": ctr,
     }
 
     return {
-        "score":               score,
-        "grade":               grade,
+        "score": score,
+        "grade": grade,
         "has_indexation_data": has_idx,
-        "components":          components,
-        "component_alerts":    build_component_alerts(components),
+        "components": components,
+        "component_alerts": build_component_alerts(components),
     }
 
 
@@ -224,7 +221,7 @@ def print_health_score(health: dict) -> None:
     """Exibe o score de saúde no terminal."""
     score = health["score"]
     grade = health["grade"]
-    comp  = health["components"]
+    comp = health["components"]
 
     filled = int(score / 5)
     # Tenta caracteres Unicode; cai para ASCII se o terminal não suportar (ex: cp1252)
@@ -266,6 +263,7 @@ def print_health_score(health: dict) -> None:
 # 4a — Páginas órfãs
 # ---------------------------------------------------------------------------
 
+
 def detect_orphan_pages(position_report: dict) -> list:
     """
     Retorna URLs do sitemap com zero impressões no período analisado.
@@ -300,19 +298,13 @@ def print_orphan_pages(orphans: list, max_display: int = 20) -> None:
 # 4b — Canibalização de keywords
 # ---------------------------------------------------------------------------
 
-# Limiares para considerar que duas URLs REALMENTE competem por uma query.
-# Sem eles, qualquer query com 2+ URLs (mesmo uma com 1 impressão na posição 80)
-# era reportada como canibalização — gerando muito falso positivo.
-_CANNIBAL_MIN_IMPRESSIONS = 10   # URL precisa de volume mínimo para a query
-_CANNIBAL_MAX_POSITION    = 30   # URL muito abaixo não compete de fato
-
 
 def detect_cannibalization(query_rows: list) -> list:
     """
     Detecta queries onde 2+ URLs do site REALMENTE competem no Search Console.
 
     Uma URL só conta como concorrente se tiver volume e posição relevantes
-    (impressões ≥ _CANNIBAL_MIN_IMPRESSIONS e posição ≤ _CANNIBAL_MAX_POSITION).
+    (impressões ≥ CANNIBAL_MIN_IMPRESSIONS e posição ≤ CANNIBAL_MAX_POSITION).
     Queries que não atingem 2 concorrentes qualificados são descartadas.
 
     query_rows: lista de dicts {"query", "url", "clicks", "impressions", "ctr", "position"}
@@ -335,9 +327,11 @@ def detect_cannibalization(query_rows: list) -> list:
     result = []
     for query, urls in groups.items():
         competing = [
-            u for u in urls
-            if u.get("impressions", 0) >= _CANNIBAL_MIN_IMPRESSIONS
-            and u.get("position") and u["position"] <= _CANNIBAL_MAX_POSITION
+            u
+            for u in urls
+            if u.get("impressions", 0) >= CANNIBAL_MIN_IMPRESSIONS
+            and u.get("position")
+            and u["position"] <= CANNIBAL_MAX_POSITION
         ]
         if len(competing) < 2:
             continue
@@ -348,19 +342,21 @@ def detect_cannibalization(query_rows: list) -> list:
         # de tráfego potencial está sendo fragmentado entre páginas concorrentes.
         secondary_impr = sum(u["impressions"] for u in competing[1:])
         if competing[0]["position"] <= 10 and competing[1]["position"] <= 10:
-            severity = "alta"      # 2+ disputando a 1ª página
+            severity = "alta"  # 2+ disputando a 1ª página
         elif competing[1]["position"] <= 20:
             severity = "média"
         else:
             severity = "baixa"
 
-        result.append({
-            "query":          query,
-            "url_count":      len(competing),
-            "urls":           competing,
-            "severity":       severity,
-            "severity_score": secondary_impr,
-        })
+        result.append(
+            {
+                "query": query,
+                "url_count": len(competing),
+                "urls": competing,
+                "severity": severity,
+                "severity_score": secondary_impr,
+            }
+        )
 
     result.sort(key=lambda g: (-g["severity_score"], -g["url_count"]))
     return result
@@ -379,7 +375,7 @@ def print_cannibalization(cannibalization: list, max_display: int = 10) -> None:
 
     for group in cannibalization[:max_display]:
         sev = group.get("severity", "?")
-        print(f"\n  Keyword: \"{group['query']}\"  ({group['url_count']} URLs · severidade {sev})")
+        print(f'\n  Keyword: "{group["query"]}"  ({group["url_count"]} URLs · severidade {sev})')
         for u in group["urls"]:
             pos_str = f"{u['position']:.1f}" if u["position"] else "s/d"
             print(f"    Pos {pos_str:>6}  {u['impressions']:>6} impr.  {u['url']}")
@@ -398,11 +394,11 @@ def print_cannibalization(cannibalization: list, max_display: int = 10) -> None:
 # Honestidade: isto é a demanda REAL do próprio site na busca do Google —
 # não o índice global 0–100 do Google Trends. Lógica pura (sem rede).
 
-SITE_TREND_KEY        = "Site (todo o domínio)"
-TREND_RISING_RATIO    = 1.15   # último terço ≥ 115% do primeiro → rising
-TREND_DECLINING_RATIO = 0.85   # último terço ≤ 85% do primeiro  → declining
-TREND_MIN_DAYS        = 6      # mínimo de dias p/ classificar (2 por terço)
-TREND_SPARSE_DAYS     = 14     # menos dias com dados que isso → "sparse"
+SITE_TREND_KEY = "Site (todo o domínio)"
+TREND_RISING_RATIO = 1.15  # último terço ≥ 115% do primeiro → rising
+TREND_DECLINING_RATIO = 0.85  # último terço ≤ 85% do primeiro  → declining
+TREND_MIN_DAYS = 6  # mínimo de dias p/ classificar (2 por terço)
+TREND_SPARSE_DAYS = 14  # menos dias com dados que isso → "sparse"
 
 
 def _classify_thirds(values: list) -> tuple:
@@ -415,9 +411,9 @@ def _classify_thirds(values: list) -> tuple:
         avg = sum(values) / n if n else 0.0
         return "stable", avg, avg
 
-    third     = n // 3
+    third = n // 3
     first_avg = sum(values[:third]) / third
-    last_avg  = sum(values[-third:]) / third
+    last_avg = sum(values[-third:]) / third
 
     if first_avg == 0:
         trend = "rising" if last_avg > 0 else "stable"
@@ -432,8 +428,7 @@ def _classify_thirds(values: list) -> tuple:
     return trend, first_avg, last_avg
 
 
-def compute_date_trends(date_data: dict, top_n: int = 10,
-                        metric: str = "impressions") -> dict:
+def compute_date_trends(date_data: dict, top_n: int = 10, metric: str = "impressions") -> dict:
     """
     Transforma o bruto de fetch_date_trends em tendências classificadas.
 
@@ -457,23 +452,23 @@ def compute_date_trends(date_data: dict, top_n: int = 10,
         trend, first_avg, last_avg = _classify_thirds(values)
         days_with_data = sum(1 for v in values if v > 0)
         return {
-            "trend":     trend,
-            "peak":      max(values) if values else 0,
-            "latest":    int(round(last_avg)),
-            "values":    values,
-            "sparse":    days_with_data < TREND_SPARSE_DAYS,
-            "source":    "gsc",
-            "metric":    metric,
+            "trend": trend,
+            "peak": max(values) if values else 0,
+            "latest": int(round(last_avg)),
+            "values": values,
+            "sparse": days_with_data < TREND_SPARSE_DAYS,
+            "source": "gsc",
+            "metric": metric,
             "first_avg": round(first_avg, 1),
-            "last_avg":  round(last_avg, 1),
+            "last_avg": round(last_avg, 1),
         }
 
     out = {SITE_TREND_KEY: _entry({r["date"]: r.get(metric, 0) for r in site_rows})}
-    out[SITE_TREND_KEY]["dates"] = axis   # eixo p/ o gráfico de linha (P5)
+    out[SITE_TREND_KEY]["dates"] = axis  # eixo p/ o gráfico de linha (P5)
 
     totals: dict = {}
     per_query: dict = {}
-    for r in (date_data.get("query_rows") or []):
+    for r in date_data.get("query_rows") or []:
         q = r["query"]
         totals[q] = totals.get(q, 0) + r.get("impressions", 0)
         per_query.setdefault(q, {})[r["date"]] = r.get(metric, 0)
@@ -491,7 +486,7 @@ def print_date_trends(trends_data: dict) -> None:
         return
     ARROW = {"rising": "+", "declining": "-", "stable": "="}
     LABEL = {"rising": "Crescente", "declining": "Em queda", "stable": "Estavel"}
-    days  = len(next(iter(trends_data.values())).get("values", []))
+    days = len(next(iter(trends_data.values())).get("values", []))
     print("\n" + "-" * 72)
     print(f"  Tendencias de demanda — GSC, impressoes/dia ({days} dias)")
     print("  (1o terco vs ultimo terco do periodo; dados do proprio site)")
@@ -499,9 +494,11 @@ def print_date_trends(trends_data: dict) -> None:
     for kw, td in trends_data.items():
         arrow = ARROW.get(td["trend"], "=")
         label = LABEL.get(td["trend"], "Estavel")
-        note  = "  (dados esparsos)" if td.get("sparse") else ""
-        print(f"  [{arrow}] {kw:<40} {label:<10} "
-              f"{td.get('first_avg', 0):>8.1f} -> {td.get('last_avg', 0):<8.1f}{note}")
+        note = "  (dados esparsos)" if td.get("sparse") else ""
+        print(
+            f"  [{arrow}] {kw:<40} {label:<10} "
+            f"{td.get('first_avg', 0):>8.1f} -> {td.get('last_avg', 0):<8.1f}{note}"
+        )
     print("-" * 72 + "\n")
 
 
@@ -567,13 +564,13 @@ def build_consolidation_plan(cannibalization: list) -> dict:
     }
     """
     canonical_urls: set = set()
-    redirect_target: dict = {}      # from_url -> to_url já planejado
+    redirect_target: dict = {}  # from_url -> to_url já planejado
     groups_out: list = []
     redirects: list = []
     conflicts: list = []
 
     for group in cannibalization or []:
-        query    = group.get("query", "")
+        query = group.get("query", "")
         severity = group.get("severity", "baixa")
 
         # Candidatas a canônica: excluem URLs já marcadas para redirect
@@ -601,38 +598,40 @@ def build_consolidation_plan(cannibalization: list) -> dict:
                 if redirect_target[u["url"]] != canonical["url"]:
                     conflicts.append(
                         f'grupo "{query}": {u["url"]} ja redireciona para '
-                        f'{redirect_target[u["url"]]} (grupo de maior severidade) '
+                        f"{redirect_target[u['url']]} (grupo de maior severidade) "
                         f"— destino mantido"
                     )
                 continue
 
             redirect_target[u["url"]] = canonical["url"]
             entry = {
-                "from_url":    u["url"],
-                "to_url":      canonical["url"],
-                "keyword":     query,
-                "severity":    severity,
+                "from_url": u["url"],
+                "to_url": canonical["url"],
+                "keyword": query,
+                "severity": severity,
                 "clicks_from": u.get("clicks", 0),
-                "clicks_to":   canonical.get("clicks", 0),
+                "clicks_to": canonical.get("clicks", 0),
             }
             redirects.append(entry)
             sources_out.append(u)
 
         if sources_out:
             canonical_urls.add(canonical["url"])
-            groups_out.append({
-                "query":     query,
-                "severity":  severity,
-                "canonical": canonical,
-                "sources":   sources_out,
-            })
+            groups_out.append(
+                {
+                    "query": query,
+                    "severity": severity,
+                    "canonical": canonical,
+                    "sources": sources_out,
+                }
+            )
 
     return {
-        "disclaimer":      _PLAN_DISCLAIMER,
-        "groups":          groups_out,
-        "redirects":       redirects,
-        "conflicts":       conflicts,
-        "total_groups":    len(groups_out),
+        "disclaimer": _PLAN_DISCLAIMER,
+        "groups": groups_out,
+        "redirects": redirects,
+        "conflicts": conflicts,
+        "total_groups": len(groups_out),
         "total_redirects": len(redirects),
     }
 
@@ -663,7 +662,9 @@ def build_htaccess_block(plan: dict, date: str) -> str:
         "",
     ]
     for r in plan.get("redirects", []):
-        lines.append(f"# keyword: {_ascii_safe(r['keyword'])}  (severidade {_ascii_safe(r['severity'])})")
+        lines.append(
+            f"# keyword: {_ascii_safe(r['keyword'])}  (severidade {_ascii_safe(r['severity'])})"
+        )
         lines.append(f"Redirect 301 {_url_path(r['from_url'])} {r['to_url']}")
         lines.append("")
     return "\n".join(lines)
@@ -686,7 +687,9 @@ def build_nginx_block(plan: dict, date: str) -> str:
         "",
     ]
     for r in plan.get("redirects", []):
-        lines.append(f"# keyword: {_ascii_safe(r['keyword'])}  (severidade {_ascii_safe(r['severity'])})")
+        lines.append(
+            f"# keyword: {_ascii_safe(r['keyword'])}  (severidade {_ascii_safe(r['severity'])})"
+        )
         lines.append(f"location = {_url_path(r['from_url'])} {{ return 301 {r['to_url']}; }}")
         lines.append("")
     return "\n".join(lines)
@@ -695,6 +698,7 @@ def build_nginx_block(plan: dict, date: str) -> str:
 def _ascii_safe(text: str) -> str:
     """Remove acentos/não-ASCII para comentários de arquivos de config."""
     import unicodedata
+
     norm = unicodedata.normalize("NFKD", str(text))
     return norm.encode("ascii", "ignore").decode("ascii")
 
@@ -702,6 +706,7 @@ def _ascii_safe(text: str) -> str:
 def _wrap_ascii(text: str, width: int) -> list:
     """Quebra texto em linhas de até `width` chars (para comentários)."""
     import textwrap
+
     return textwrap.wrap(_ascii_safe(text), width=width)
 
 
@@ -713,16 +718,17 @@ def print_consolidation_plan(plan: dict, max_display: int = 10) -> None:
         return
 
     print("\n" + "-" * 70)
-    print(f"  Plano de consolidacao 301 (SUGESTAO) — {total} redirect(s) "
-          f"em {plan['total_groups']} grupo(s)")
+    print(
+        f"  Plano de consolidacao 301 (SUGESTAO) — {total} redirect(s) "
+        f"em {plan['total_groups']} grupo(s)"
+    )
     print("-" * 70)
     print("  ATENCAO: sugestao automatica — revise antes de aplicar.")
     print("  Artefatos: *_redirects.csv, *_redirects_apache.txt, *_redirects_nginx.txt")
 
     for g in plan["groups"][:max_display]:
         print(f'\n  Keyword: "{g["query"]}"  (severidade {g["severity"]})')
-        print(f"    Manter : {g['canonical']['url']}  "
-              f"({g['canonical'].get('clicks', 0)} cliques)")
+        print(f"    Manter : {g['canonical']['url']}  ({g['canonical'].get('clicks', 0)} cliques)")
         for s in g["sources"]:
             print(f"    301 de : {s['url']}  ({s.get('clicks', 0)} cliques)")
 
@@ -731,6 +737,8 @@ def print_consolidation_plan(plan: dict, max_display: int = 10) -> None:
         print(f"\n  ... +{rest} grupos (veja a sheet 'Plano 301' no Excel)")
 
     if plan.get("conflicts"):
-        print(f"\n  Conflitos resolvidos automaticamente: {len(plan['conflicts'])} "
-              f"(detalhes no CSV/Excel)")
+        print(
+            f"\n  Conflitos resolvidos automaticamente: {len(plan['conflicts'])} "
+            f"(detalhes no CSV/Excel)"
+        )
     print("-" * 70 + "\n")

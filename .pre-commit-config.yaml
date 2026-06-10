@@ -1,8 +1,10 @@
 # Pre-commit hooks for this repo.
-# Enable once:  pip install pre-commit  &&  pre-commit install
+# Enable once:  pip install -r requirements-dev.txt  &&  pre-commit install
 #
-# The secret scanner is a LOCAL, zero-dependency Python script
-# (scripts/check_secrets.py) — no external repos are downloaded.
+# All hooks are LOCAL (language: system) — no external repos are downloaded:
+#   - block-secrets : zero-dependency secret scanner (scripts/check_secrets.py)
+#   - ruff          : lint + format check (config in ruff.toml). Install ruff via
+#                     requirements-dev.txt. Mirrors the GitHub Actions CI gate.
 repos:
   - repo: local
     hooks:
@@ -12,3 +14,15 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: ruff-check
+        name: ruff check (lint)
+        entry: ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format (check)
+        entry: ruff format --check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

@@ -30,6 +30,7 @@ VERDICT_KEYS = ("ok", "atencao", "over_otimizado", "raso")
 # Arquivo de sites
 # ---------------------------------------------------------------------------
 
+
 def parse_sites_file(path: str) -> list:
     """
     Lê um arquivo de sites: um domínio por linha.
@@ -46,7 +47,7 @@ def parse_sites_file(path: str) -> list:
         raise FileNotFoundError(f"Arquivo de sites não encontrado: {path}")
 
     sites = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for raw in f:
             line = raw.split("#", 1)[0].strip()
             if line:
@@ -60,6 +61,7 @@ def parse_sites_file(path: str) -> list:
 # ---------------------------------------------------------------------------
 # Execução do lote
 # ---------------------------------------------------------------------------
+
 
 def format_site_summary(result: dict) -> str:
     """
@@ -127,6 +129,7 @@ def run_batch(sites: list, pipeline_fn) -> list:
 # Relatório consolidado do lote
 # ---------------------------------------------------------------------------
 
+
 def write_batch_report(results: list, date: str) -> str:
     """
     Grava o resumo consolidado do lote em:
@@ -145,44 +148,59 @@ def write_batch_report(results: list, date: str) -> str:
 
     with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "Site",
-            "Status",
-            "Health",
-            "Grade",
-            "Posicao Media",
-            "CTR(%)",
-            "Grupos Canibalizacao",
-            "Conteudo OK",
-            "Conteudo Atencao",
-            "Conteudo Over-otimizado",
-            "Conteudo Raso",
-            "Snapshots",
-            "Erro",
-        ])
+        writer.writerow(
+            [
+                "Site",
+                "Status",
+                "Health",
+                "Grade",
+                "Posicao Media",
+                "CTR(%)",
+                "Grupos Canibalizacao",
+                "Conteudo OK",
+                "Conteudo Atencao",
+                "Conteudo Over-otimizado",
+                "Conteudo Raso",
+                "Snapshots",
+                "Erro",
+            ]
+        )
         for result in results:
             if result.get("ok"):
                 s = result.get("summary") or {}
                 verdicts = s.get("content_verdicts") or {}
                 cann = s.get("cannibalization_groups")
-                writer.writerow([
-                    result.get("site", ""),
-                    "OK",
-                    s.get("health_score", ""),
-                    s.get("health_grade", ""),
-                    s.get("avg_position", ""),
-                    s.get("ctr", ""),
-                    cann if cann is not None else "",
-                    *[verdicts.get(k, 0) for k in VERDICT_KEYS],
-                    s.get("snapshot_count", ""),
-                    "",
-                ])
+                writer.writerow(
+                    [
+                        result.get("site", ""),
+                        "OK",
+                        s.get("health_score", ""),
+                        s.get("health_grade", ""),
+                        s.get("avg_position", ""),
+                        s.get("ctr", ""),
+                        cann if cann is not None else "",
+                        *[verdicts.get(k, 0) for k in VERDICT_KEYS],
+                        s.get("snapshot_count", ""),
+                        "",
+                    ]
+                )
             else:
-                writer.writerow([
-                    result.get("site", ""),
-                    "ERRO",
-                    "", "", "", "", "", "", "", "", "", "",
-                    result.get("error", ""),
-                ])
+                writer.writerow(
+                    [
+                        result.get("site", ""),
+                        "ERRO",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        result.get("error", ""),
+                    ]
+                )
 
     return filepath

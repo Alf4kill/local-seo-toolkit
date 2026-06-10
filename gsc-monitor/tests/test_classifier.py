@@ -9,18 +9,19 @@ desconhecidos.
 """
 
 import pytest
-
-from core.classifier import classify, VERDICT_MAP
+from core.classifier import VERDICT_MAP, classify
 
 
 class TestClassify:
-
-    @pytest.mark.parametrize("verdict, esperado", [
-        ("PASS", "indexed"),
-        ("FAIL", "not_indexed"),
-        ("NEUTRAL", "warning"),
-        ("VERDICT_UNSPECIFIED", "unknown"),
-    ])
+    @pytest.mark.parametrize(
+        "verdict, esperado",
+        [
+            ("PASS", "indexed"),
+            ("FAIL", "not_indexed"),
+            ("NEUTRAL", "warning"),
+            ("VERDICT_UNSPECIFIED", "unknown"),
+        ],
+    )
     def test_mapeamento_conhecido(self, verdict, esperado):
         assert classify(verdict) == esperado
 

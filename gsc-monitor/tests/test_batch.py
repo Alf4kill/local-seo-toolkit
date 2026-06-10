@@ -22,28 +22,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import storage
 from core.batch import (
+    VERDICT_KEYS,
+    format_site_summary,
     parse_sites_file,
     run_batch,
-    format_site_summary,
     write_batch_report,
-    VERDICT_KEYS,
 )
 
 
 def _make_summary(**overrides) -> dict:
     """Resumo mínimo no formato retornado por posicao.run_pipeline."""
     base = {
-        "site":                   "ex.com",
-        "date":                   "2026-06-09",
-        "urls_total":             10,
-        "urls_with_data":         8,
-        "health_score":           70.7,
-        "health_grade":           "Bom",
-        "avg_position":           12.3,
-        "ctr":                    2.5,
-        "snapshot_count":         5,
+        "site": "ex.com",
+        "date": "2026-06-09",
+        "urls_total": 10,
+        "urls_with_data": 8,
+        "health_score": 70.7,
+        "health_grade": "Bom",
+        "avg_position": 12.3,
+        "ctr": 2.5,
+        "snapshot_count": 5,
         "cannibalization_groups": 3,
-        "content_verdicts":       {"ok": 4, "atencao": 2, "over_otimizado": 1, "raso": 1},
+        "content_verdicts": {"ok": 4, "atencao": 2, "over_otimizado": 1, "raso": 1},
     }
     base.update(overrides)
     return base
@@ -53,8 +53,8 @@ def _make_summary(**overrides) -> dict:
 # parse_sites_file
 # ---------------------------------------------------------------------------
 
-class TestParseSitesFile(unittest.TestCase):
 
+class TestParseSitesFile(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix="gsc_test_batch_")
 
@@ -93,8 +93,8 @@ class TestParseSitesFile(unittest.TestCase):
 # run_batch
 # ---------------------------------------------------------------------------
 
-class TestRunBatch(unittest.TestCase):
 
+class TestRunBatch(unittest.TestCase):
     def test_executa_todos_em_ordem(self):
         chamados = []
 
@@ -147,8 +147,8 @@ class TestRunBatch(unittest.TestCase):
 # format_site_summary
 # ---------------------------------------------------------------------------
 
-class TestFormatSiteSummary(unittest.TestCase):
 
+class TestFormatSiteSummary(unittest.TestCase):
     def test_resultado_ok(self):
         line = format_site_summary(
             {"site": "ex.com", "ok": True, "summary": _make_summary(), "error": None}
@@ -187,8 +187,8 @@ class TestFormatSiteSummary(unittest.TestCase):
 # write_batch_report
 # ---------------------------------------------------------------------------
 
-class TestWriteBatchReport(unittest.TestCase):
 
+class TestWriteBatchReport(unittest.TestCase):
     def setUp(self):
         # Isolamento independente do conftest (funciona em unittest discover puro)
         self._original_dir = storage.RELATORIOS_DIR
@@ -199,7 +199,7 @@ class TestWriteBatchReport(unittest.TestCase):
         storage.RELATORIOS_DIR = self._original_dir
 
     def _read_csv(self, path):
-        with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        with open(path, encoding="utf-8-sig", newline="") as f:
             return list(csv.reader(f))
 
     def test_cria_csv_no_diretorio_batch(self):
@@ -211,7 +211,8 @@ class TestWriteBatchReport(unittest.TestCase):
         self.assertTrue(os.path.exists(path))
         self.assertEqual(os.path.basename(path), "2026-06-09_resumo.csv")
         self.assertEqual(
-            os.path.basename(os.path.dirname(path)), "_batch",
+            os.path.basename(os.path.dirname(path)),
+            "_batch",
             "relatório deve ficar em relatorios/_batch/",
         )
 

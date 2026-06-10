@@ -5,15 +5,10 @@ Suporta cache em disco para evitar rechamadas desnecessárias.
 """
 
 from datetime import date, timedelta
+
+from config import DAYS_BACK, GSC_DELAY_DAYS, ROW_LIMIT
+from core.urls import build_site_url, normalize_domain
 from googleapiclient.errors import HttpError
-
-
-# ---------------------------------------------------------------------------
-# Configurações — modifique aqui conforme necessário
-# ---------------------------------------------------------------------------
-DAYS_BACK  = 30     # Número de dias retroativos para o período de análise
-ROW_LIMIT  = 25000  # Máximo de linhas da API (limite absoluto: 25000)
-# ---------------------------------------------------------------------------
 
 
 def _build_date_range(days_back: int = DAYS_BACK) -> tuple[str, str]:
@@ -21,25 +16,9 @@ def _build_date_range(days_back: int = DAYS_BACK) -> tuple[str, str]:
     Retorna (start_date, end_date) como strings ISO 8601.
     O GSC tem delay de ~2-3 dias, então end_date = hoje - 3 dias.
     """
-    end   = date.today() - timedelta(days=3)
+    end = date.today() - timedelta(days=GSC_DELAY_DAYS)
     start = end - timedelta(days=days_back)
     return start.isoformat(), end.isoformat()
-
-
-def _build_site_url(domain: str) -> str:
-    """Formata o siteUrl no padrão exigido pela Search Analytics API."""
-    if domain.startswith("sc-domain:"):
-        return domain
-    if domain.startswith("http://") or domain.startswith("https://"):
-        return domain.rstrip("/") + "/"
-    return f"https://{domain.rstrip('/')}/"
-
-
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para uso como chave de cache."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
 
 
 def fetch_positions(
@@ -86,12 +65,12 @@ def fetch_positions(
     """
     from core.cache import get_posicao_cache, set_posicao_cache
 
-    site_url    = _build_site_url(domain)
-    cache_site  = _normalize_domain(domain)
+    site_url = build_site_url(domain)
+    cache_site = normalize_domain(domain)
     start_date, end_date = _build_date_range()
 
     print(f"[position_fetcher] Período  : {start_date}  a  {end_date}  ({DAYS_BACK} dias)")
-    print(f"[position_fetcher] País     : Global (sem filtro)")
+    print("[position_fetcher] País     : Global (sem filtro)")
 
     # ── Tentativa de cache hit ──────────────────────────────────────────────
     api_data = None
@@ -102,22 +81,18 @@ def fetch_positions(
 
     # ── Chamada à API (somente se cache miss ou --no-cache) ─────────────────
     if api_data is None:
-        print(f"[position_fetcher] Consultando Search Analytics API...")
+        print("[position_fetcher] Consultando Search Analytics API...")
 
         body = {
-            "startDate":  start_date,
-            "endDate":    end_date,
+            "startDate": start_date,
+            "endDate": end_date,
             "dimensions": ["page"],
-            "rowLimit":   ROW_LIMIT,
-            "dataState":  "final",
+            "rowLimit": ROW_LIMIT,
+            "dataState": "final",
         }
 
         try:
-            response = (
-                service.searchanalytics()
-                .query(siteUrl=site_url, body=body)
-                .execute()
-            )
+            response = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
         except HttpError as exc:
             print(f"[position_fetcher] ERRO HTTP: {exc.status_code} — {exc.reason}")
             raise
@@ -126,10 +101,10 @@ def fetch_positions(
         for row in response.get("rows", []):
             url = row["keys"][0]
             api_data[url] = {
-                "clicks":      int(row.get("clicks", 0)),
+                "clicks": int(row.get("clicks", 0)),
                 "impressions": int(row.get("impressions", 0)),
-                "ctr":         round(row.get("ctr", 0.0) * 100, 2),
-                "position":    round(row.get("position", 0.0), 1),
+                "ctr": round(row.get("ctr", 0.0) * 100, 2),
+                "position": round(row.get("position", 0.0), 1),
             }
 
         if use_cache:
@@ -143,31 +118,35 @@ def fetch_positions(
     for url in sitemap_urls:
         if url in api_data:
             d = api_data[url]
-            rows.append({
-                "url":         url,
-                "position":    d["position"],
-                "clicks":      d["clicks"],
-                "impressions": d["impressions"],
-                "ctr":         d["ctr"],
-                "has_data":    True,
-            })
+            rows.append(
+                {
+                    "url": url,
+                    "position": d["position"],
+                    "clicks": d["clicks"],
+                    "impressions": d["impressions"],
+                    "ctr": d["ctr"],
+                    "has_data": True,
+                }
+            )
         else:
-            rows.append({
-                "url":         url,
-                "position":    None,
-                "clicks":      0,
-                "impressions": 0,
-                "ctr":         0.0,
-                "has_data":    False,
-            })
+            rows.append(
+                {
+                    "url": url,
+                    "position": None,
+                    "clicks": 0,
+                    "impressions": 0,
+                    "ctr": 0.0,
+                    "has_data": False,
+                }
+            )
 
     rows.sort(key=lambda r: (not r["has_data"], r["position"] or 9999))
 
     return {
         "start_date": start_date,
-        "end_date":   end_date,
-        "country":    "global",
-        "rows":       rows,
+        "end_date": end_date,
+        "country": "global",
+        "rows": rows,
     }
 
 
@@ -186,11 +165,11 @@ def fetch_query_positions(
     """
     from core.cache import get_query_cache, set_query_cache
 
-    site_url   = _build_site_url(domain)
-    cache_site = _normalize_domain(domain)
+    site_url = build_site_url(domain)
+    cache_site = normalize_domain(domain)
     start_date, end_date = _build_date_range()
 
-    print(f"[position_fetcher] Consultando queries (canibalização)...")
+    print("[position_fetcher] Consultando queries (canibalização)...")
 
     if use_cache:
         cached = get_query_cache(cache_site, start_date, end_date)
@@ -199,33 +178,31 @@ def fetch_query_positions(
             return cached
 
     body = {
-        "startDate":  start_date,
-        "endDate":    end_date,
+        "startDate": start_date,
+        "endDate": end_date,
         "dimensions": ["query", "page"],
-        "rowLimit":   ROW_LIMIT,
-        "dataState":  "final",
+        "rowLimit": ROW_LIMIT,
+        "dataState": "final",
     }
 
     try:
-        response = (
-            service.searchanalytics()
-            .query(siteUrl=site_url, body=body)
-            .execute()
-        )
+        response = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
     except HttpError as exc:
         print(f"[position_fetcher] ERRO HTTP ao buscar queries: {exc.status_code} — {exc.reason}")
         raise
 
     rows = []
     for row in response.get("rows", []):
-        rows.append({
-            "query":       row["keys"][0],
-            "url":         row["keys"][1],
-            "clicks":      int(row.get("clicks", 0)),
-            "impressions": int(row.get("impressions", 0)),
-            "ctr":         round(row.get("ctr", 0.0) * 100, 2),
-            "position":    round(row.get("position", 0.0), 1),
-        })
+        rows.append(
+            {
+                "query": row["keys"][0],
+                "url": row["keys"][1],
+                "clicks": int(row.get("clicks", 0)),
+                "impressions": int(row.get("impressions", 0)),
+                "ctr": round(row.get("ctr", 0.0) * 100, 2),
+                "position": round(row.get("position", 0.0), 1),
+            }
+        )
 
     rows.sort(key=lambda r: (r["query"], r["position"]))
 
@@ -245,7 +222,7 @@ def fetch_query_positions(
 # 0–100 do Google Trends. O pytrends continua disponível como legado
 # (--trends-source pytrends).
 
-DAYS_BACK_TRENDS = 90   # janela das tendências (≈ 3 meses → terços de ~30 dias)
+DAYS_BACK_TRENDS = 90  # janela das tendências (≈ 3 meses → terços de ~30 dias)
 
 
 def fetch_date_trends(
@@ -270,44 +247,40 @@ def fetch_date_trends(
     """
     from core.cache import get_date_trends_cache, set_date_trends_cache
 
-    site_url   = _build_site_url(domain)
-    cache_site = _normalize_domain(domain)
+    site_url = build_site_url(domain)
+    cache_site = normalize_domain(domain)
     start_date, end_date = _build_date_range(days_back)
 
     if use_cache:
         cached = get_date_trends_cache(cache_site, start_date, end_date)
         if cached is not None:
-            print(f"[position_fetcher] [CACHE] Tendências por data carregadas "
-                  f"({len(cached.get('site_rows', []))} dias).")
+            print(
+                f"[position_fetcher] [CACHE] Tendências por data carregadas "
+                f"({len(cached.get('site_rows', []))} dias)."
+            )
             return cached
 
-    print(f"[position_fetcher] Consultando tendências por data "
-          f"({start_date} a {end_date})...")
+    print(f"[position_fetcher] Consultando tendências por data ({start_date} a {end_date})...")
 
     def _query(dimensions: list) -> list:
         body = {
-            "startDate":  start_date,
-            "endDate":    end_date,
+            "startDate": start_date,
+            "endDate": end_date,
             "dimensions": dimensions,
-            "rowLimit":   ROW_LIMIT,
-            "dataState":  "final",
+            "rowLimit": ROW_LIMIT,
+            "dataState": "final",
         }
         try:
-            response = (
-                service.searchanalytics()
-                .query(siteUrl=site_url, body=body)
-                .execute()
-            )
+            response = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
         except HttpError as exc:
-            print(f"[position_fetcher] ERRO HTTP em {dimensions}: "
-                  f"{exc.status_code} — {exc.reason}")
+            print(f"[position_fetcher] ERRO HTTP em {dimensions}: {exc.status_code} — {exc.reason}")
             raise
         return response.get("rows", [])
 
     site_rows = [
         {
-            "date":        row["keys"][0],
-            "clicks":      int(row.get("clicks", 0)),
+            "date": row["keys"][0],
+            "clicks": int(row.get("clicks", 0)),
             "impressions": int(row.get("impressions", 0)),
         }
         for row in _query(["date"])
@@ -315,9 +288,9 @@ def fetch_date_trends(
 
     query_rows = [
         {
-            "date":        row["keys"][0],
-            "query":       row["keys"][1],
-            "clicks":      int(row.get("clicks", 0)),
+            "date": row["keys"][0],
+            "query": row["keys"][1],
+            "clicks": int(row.get("clicks", 0)),
             "impressions": int(row.get("impressions", 0)),
         }
         for row in _query(["date", "query"])
@@ -325,14 +298,13 @@ def fetch_date_trends(
 
     data = {
         "start_date": start_date,
-        "end_date":   end_date,
-        "site_rows":  site_rows,
+        "end_date": end_date,
+        "site_rows": site_rows,
         "query_rows": query_rows,
     }
 
     if use_cache:
         set_date_trends_cache(cache_site, start_date, end_date, data)
 
-    print(f"[position_fetcher] {len(site_rows)} dias; "
-          f"{len(query_rows)} linhas date×query.")
+    print(f"[position_fetcher] {len(site_rows)} dias; {len(query_rows)} linhas date×query.")
     return data

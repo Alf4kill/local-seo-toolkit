@@ -6,8 +6,8 @@ que a GUI exiba o output em tempo real sem bloquear o event loop do Tkinter.
 """
 
 import os
-import sys
 import queue
+import sys
 import threading
 import traceback
 from datetime import date
@@ -17,10 +17,12 @@ _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
+from core.urls import normalize_domain
 
 # ---------------------------------------------------------------------------
 # Redirect de stdout para a queue
 # ---------------------------------------------------------------------------
+
 
 class QueueStream:
     """
@@ -30,8 +32,9 @@ class QueueStream:
     Implementa os atributos mínimos do protocolo io.TextIOBase para
     compatibilidade com código que inspeciona sys.stdout (ex: encoding).
     """
-    encoding = "utf-8"   # atributo de classe — evita AttributeError em
-                         # código que faz sys.stdout.encoding ou getattr
+
+    encoding = "utf-8"  # atributo de classe — evita AttributeError em
+    # código que faz sys.stdout.encoding ou getattr
 
     def __init__(self, q: queue.Queue):
         self._q = q
@@ -51,15 +54,10 @@ class QueueStream:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _normalize_domain(site: str) -> str:
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
-
-
 # ---------------------------------------------------------------------------
 # Lógica de cada tarefa
 # ---------------------------------------------------------------------------
+
 
 def _run_indexation(
     service,
@@ -72,13 +70,16 @@ def _run_indexation(
 ) -> None:
     """Executa o relatório de indexação (URL Inspection API)."""
     from core.sitemap import fetch_urls
-    from fetchers.inspector import inspect_urls
-    from reporters.reporter import build_detailed, build_consolidated, print_consolidated
     from core.storage import (
-        build_snapshot, append_historico,
-        save_detailed_report, save_consolidated_report,
-        save_text_report, save_csv_indexacao,
+        append_historico,
+        build_snapshot,
+        save_consolidated_report,
+        save_csv_indexacao,
+        save_detailed_report,
+        save_text_report,
     )
+    from fetchers.inspector import inspect_urls
+    from reporters.reporter import build_consolidated, build_detailed, print_consolidated
 
     print(f"\n{'─' * 55}")
     print(f"  INDEXAÇÃO — {domain}")
@@ -102,7 +103,7 @@ def _run_indexation(
     print(f"[indexação] Inspecionando {len(urls)} URL(s)...\n")
     url_results = inspect_urls(service, site, urls, use_cache=use_cache)
 
-    detailed     = build_detailed(domain, today, url_results)
+    detailed = build_detailed(domain, today, url_results)
     consolidated = build_consolidated(domain, today, url_results)
 
     save_detailed_report(domain, today, detailed)
@@ -133,22 +134,34 @@ def _run_position(
     result_store: "dict | None" = None,
 ) -> None:
     """Executa o relatório de posicionamento (Search Analytics API) + Fase 4."""
+    from core.analytics import (
+        build_consolidation_plan,
+        build_htaccess_block,
+        build_nginx_block,
+        calculate_health_score,
+        detect_cannibalization,
+        detect_orphan_pages,
+        print_cannibalization,
+        print_consolidation_plan,
+        print_health_score,
+        print_orphan_pages,
+    )
     from core.sitemap import fetch_urls
+    from core.storage import (
+        append_historico_posicao,
+        load_historico_posicao,
+        load_latest_consolidated,
+        save_csv_posicao,
+        save_dashboard,
+        save_excel_report,
+        save_nlp_report,
+        save_position_report,
+        save_position_txt,
+        save_redirects_csv,
+        save_redirects_txt,
+    )
     from fetchers.position_fetcher import fetch_positions
     from reporters.position_reporter import build_position_report, print_position_report
-    from core.storage import (
-        save_position_report, save_position_txt,
-        save_excel_report, save_csv_posicao,
-        append_historico_posicao, load_historico_posicao, load_latest_consolidated,
-        save_dashboard, save_nlp_report, save_redirects_csv, save_redirects_txt,
-    )
-    from core.analytics import (
-        calculate_health_score, print_health_score,
-        detect_orphan_pages, print_orphan_pages,
-        detect_cannibalization, print_cannibalization,
-        build_consolidation_plan, print_consolidation_plan,
-        build_htaccess_block, build_nginx_block,
-    )
 
     print(f"\n{'─' * 55}")
     print(f"  POSICIONAMENTO — {domain}")
@@ -192,7 +205,8 @@ def _run_position(
     print_orphan_pages(orphans)
 
     # Fase 5a — Knowledge Graph
-    from fetchers.knowledge_graph import search_entity, print_kg_result, load_api_key
+    from fetchers.knowledge_graph import load_api_key, print_kg_result, search_entity
+
     if api_key is None:
         api_key = load_api_key()
     kg_result = search_entity(domain, api_key=api_key, use_cache=use_cache)
@@ -202,6 +216,7 @@ def _run_position(
     query_rows = None
     if do_queries or do_trends or do_content:
         from fetchers.position_fetcher import fetch_query_positions
+
         try:
             query_rows = fetch_query_positions(service, site, use_cache=use_cache)
         except Exception as exc:
@@ -221,7 +236,8 @@ def _run_position(
         if consolidation_plan["redirects"]:
             save_redirects_csv(domain, today, consolidation_plan)
             save_redirects_txt(
-                domain, today,
+                domain,
+                today,
                 build_htaccess_block(consolidation_plan, today),
                 build_nginx_block(consolidation_plan, today),
             )
@@ -232,7 +248,12 @@ def _run_position(
         if trends_source == "pytrends":
             # Legado: índice global via pytrends (não-oficial, frágil)
             if query_rows:
-                from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
+                from fetchers.trends_fetcher import (
+                    fetch_trends,
+                    print_trends,
+                    top_keywords_from_queries,
+                )
+
                 top_kws = top_keywords_from_queries(query_rows)
                 if top_kws:
                     trends_data = fetch_trends(top_kws, domain, use_cache=use_cache)
@@ -241,10 +262,11 @@ def _run_position(
                     print("[trends] Nenhuma keyword Top 10 para buscar tendências.")
         else:
             # P5 — padrão: dimensão `date` do GSC (demanda real, 90 dias)
-            from fetchers.position_fetcher import fetch_date_trends
             from core.analytics import compute_date_trends, print_date_trends
+            from fetchers.position_fetcher import fetch_date_trends
+
             try:
-                raw_trends  = fetch_date_trends(service, site, use_cache=use_cache)
+                raw_trends = fetch_date_trends(service, site, use_cache=use_cache)
                 trends_data = compute_date_trends(raw_trends)
                 print_date_trends(trends_data)
             except Exception as exc:
@@ -254,15 +276,23 @@ def _run_position(
     nlp_results = None
     if do_nlp:
         from fetchers.nlp_analyzer import analyze_opportunity_urls, print_nlp_results
+
         nlp_results = analyze_opportunity_urls(
-            report["urls"], domain, api_key=api_key, use_cache=use_cache,
+            report["urls"],
+            domain,
+            api_key=api_key,
+            use_cache=use_cache,
         )
         print_nlp_results(nlp_results)
 
         # Relatório NLP detalhado — sempre gerado quando NLP está ativo
         from reporters.nlp_report_generator import generate_nlp_report
+
         nlp_html = generate_nlp_report(
-            domain, today, nlp_results, query_rows=query_rows,
+            domain,
+            today,
+            nlp_results,
+            query_rows=query_rows,
         )
         save_nlp_report(domain, today, nlp_html)
 
@@ -270,9 +300,13 @@ def _run_position(
     content_results = None
     if do_content:
         from fetchers.content_fetcher import analyze_opportunity_content_quality
+
         content_results = analyze_opportunity_content_quality(
-            report["urls"], domain, query_rows=query_rows,
-            nlp_results=nlp_results, use_cache=use_cache,
+            report["urls"],
+            domain,
+            query_rows=query_rows,
+            nlp_results=nlp_results,
+            use_cache=use_cache,
         )
 
     # Fase 4c + Move 2 — histórico de posição por URL (com métricas de conteúdo)
@@ -281,6 +315,7 @@ def _run_position(
 
     # Move 2 — acompanhamento conteúdo × posição
     from core.content_quality import build_content_tracking, print_content_tracking
+
     tracking = build_content_tracking(historico_posicao)
     print_content_tracking(tracking)
 
@@ -291,8 +326,12 @@ def _run_position(
 
     # Dashboard HTML (sempre gerado)
     from reporters.html_reporter import generate_dashboard
+
     html = generate_dashboard(
-        domain, today, data, report,
+        domain,
+        today,
+        data,
+        report,
         health=health,
         orphans=orphans if orphans else None,
         historico_posicao=historico_posicao,
@@ -310,13 +349,15 @@ def _run_position(
 
     if "excel" in formats:
         from reporters.excel_reporter import generate_excel
+
         hist_for_excel = (
-            historico_posicao
-            if len(historico_posicao.get("snapshots", [])) >= 2
-            else None
+            historico_posicao if len(historico_posicao.get("snapshots", [])) >= 2 else None
         )
         wb = generate_excel(
-            domain, today, data, report,
+            domain,
+            today,
+            data,
+            report,
             health=health,
             orphans=orphans if orphans else None,
             historico_posicao=hist_for_excel,
@@ -334,6 +375,7 @@ def _run_position(
 # ---------------------------------------------------------------------------
 # Ponto de entrada chamado pela GUI
 # ---------------------------------------------------------------------------
+
 
 def run_tasks(
     params: dict,
@@ -366,30 +408,32 @@ def run_tasks(
             sys.stdout = QueueStream(output_queue)
             sys.stderr = QueueStream(output_queue)
 
-            site       = params["site"].strip()
-            domain     = _normalize_domain(site)
-            today      = date.today().isoformat()
-            use_cache  = not params.get("no_cache", False)
-            limit      = params.get("limit")
-            formats    = params.get("formats", set())
+            site = params["site"].strip()
+            domain = normalize_domain(site)
+            today = date.today().isoformat()
+            use_cache = not params.get("no_cache", False)
+            limit = params.get("limit")
+            formats = params.get("formats", set())
             do_queries = params.get("do_queries", False)
-            do_trends  = params.get("do_trends",  False)
-            do_nlp     = params.get("do_nlp",     False)
+            do_trends = params.get("do_trends", False)
+            do_nlp = params.get("do_nlp", False)
             do_content = params.get("do_content", False)
-            api_key    = params.get("api_key") or None
+            api_key = params.get("api_key") or None
 
             # Salva API key se fornecida via GUI
             if api_key:
                 from fetchers.knowledge_graph import save_api_key
+
                 save_api_key(api_key)
 
             print(f"\n{'=' * 55}")
             print(f"  GSC Monitor — {domain} — {today}")
             if not use_cache:
-                print(f"  Modo: cache DESATIVADO")
+                print("  Modo: cache DESATIVADO")
             print(f"{'=' * 55}\n")
 
             from core.auth import build_service
+
             try:
                 service = build_service()
             except FileNotFoundError as exc:
@@ -401,7 +445,12 @@ def run_tasks(
 
             if params.get("do_position"):
                 _run_position(
-                    service, site, domain, today, formats, use_cache,
+                    service,
+                    site,
+                    domain,
+                    today,
+                    formats,
+                    use_cache,
                     do_queries=do_queries,
                     do_trends=do_trends,
                     trends_source=params.get("trends_source", "gsc"),
@@ -412,7 +461,7 @@ def run_tasks(
                 )
 
             print(f"\n{'=' * 55}")
-            print(f"  Concluído.")
+            print("  Concluído.")
             print(f"{'=' * 55}\n")
 
         except Exception as exc:

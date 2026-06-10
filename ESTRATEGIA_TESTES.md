@@ -26,8 +26,8 @@ Tudo isso foi corrigido nesta passagem. Resultado:
 
 | Projeto            | Antes            | Agora            |
 |--------------------|------------------|------------------|
-| gsc-monitor        | 110 testes (+9 erros de limpeza) | **148 testes, 0 erros** |
-| semantic-analyzer  | 36 testes        | **49 testes**    |
+| gsc-monitor        | 110 testes (+9 erros de limpeza) | **154 testes, 0 erros** |
+| semantic-analyzer  | 36 testes        | **80 testes**    |
 
 Comando único agora: `py -m pytest` em cada pasta (config em `pytest.ini`).
 
@@ -156,10 +156,10 @@ Princípio para ESTES projetos (cota de API é o gargalo, não RAM):
 
 ```bash
 # gsc-monitor
-cd gsc-monitor && py -m pytest            # 148 testes
+cd gsc-monitor && py -m pytest            # 154 testes
 
 # semantic-analyzer
-cd semantic-analyzer && py -m pytest      # 49 testes
+cd semantic-analyzer && py -m pytest      # 80 testes
 
 # um arquivo só, verboso
 py -m pytest tests/test_classifier.py -v

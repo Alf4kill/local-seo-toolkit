@@ -1,0 +1,63 @@
+name: CI
+
+# Lint (ruff) + suíte de testes (pytest) dos dois pacotes. Todos os testes são
+# offline e mockados — não há segredos nem cota de API envolvidos, então a CI
+# roda sem nenhum secret configurado.
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # Versão fixa: garante que `ruff format --check` use exatamente a mesma
+      # formatação do requirements-dev.txt / pre-commit local.
+      - run: pip install ruff==0.15.16
+      - name: ruff check
+        run: ruff check .
+      - name: ruff format --check
+        run: ruff format --check .
+
+  test-gsc-monitor:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gsc-monitor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest
+
+  test-semantic-analyzer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: semantic-analyzer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # Deps leves de teste: o núcleo (clusterer/loaders/report/llm/hybrid) roda
+      # com numpy + scikit-learn + requests; torch/sentence-transformers são
+      # pesados e não são necessários para a suíte (os embeddings reais são
+      # mockados). Mantém a CI rápida.
+      - name: Install light test deps (skip torch/sentence-transformers)
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scikit-learn requests
+          pip install -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest

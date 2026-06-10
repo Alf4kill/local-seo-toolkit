@@ -28,7 +28,6 @@ Exemplos:
 """
 
 import sys
-import os
 
 # Força UTF-8 no stdout/stderr para caracteres Unicode funcionarem em qualquer
 # terminal Windows (que usa cp1252 por padrão no Python 3.13).
@@ -37,31 +36,40 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# Adiciona a pasta vendor/ ao path para uso em servidores sem pip global
-_vendor = os.path.join(os.path.dirname(__file__), "vendor")
-if os.path.isdir(_vendor) and _vendor not in sys.path:
-    sys.path.insert(0, _vendor)
-
 import argparse
 from datetime import date
 
+from core.analytics import (
+    build_consolidation_plan,
+    build_htaccess_block,
+    build_nginx_block,
+    calculate_health_score,
+    detect_cannibalization,
+    detect_orphan_pages,
+    print_cannibalization,
+    print_consolidation_plan,
+    print_health_score,
+    print_orphan_pages,
+)
 from core.auth import build_service
 from core.sitemap import fetch_urls
+from core.storage import (
+    append_historico_posicao,
+    load_historico_posicao,
+    load_latest_consolidated,
+    save_csv_posicao,
+    save_dashboard,
+    save_excel_report,
+    save_nlp_report,
+    save_position_report,
+    save_position_txt,
+    save_redirects_csv,
+    save_redirects_txt,
+)
+from core.urls import normalize_domain
+from fetchers.knowledge_graph import load_api_key, print_kg_result, search_entity
 from fetchers.position_fetcher import fetch_positions
 from reporters.position_reporter import build_position_report, print_position_report
-from core.storage import (
-    save_position_report, save_position_txt, save_excel_report, save_csv_posicao,
-    append_historico_posicao, load_historico_posicao, load_latest_consolidated,
-    save_dashboard, save_nlp_report, save_redirects_csv, save_redirects_txt,
-)
-from core.analytics import (
-    calculate_health_score, print_health_score,
-    detect_orphan_pages, print_orphan_pages,
-    detect_cannibalization, print_cannibalization,
-    build_consolidation_plan, print_consolidation_plan,
-    build_htaccess_block, build_nginx_block,
-)
-from fetchers.knowledge_graph import search_entity, print_kg_result, load_api_key
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,7 +130,7 @@ def parse_args() -> argparse.Namespace:
         "--trends",
         action="store_true",
         help="Tendências de demanda: por padrão via dimensão date do GSC "
-             "(oficial, específico do site). Use --trends-source para o legado.",
+        "(oficial, específico do site). Use --trends-source para o legado.",
     )
     parser.add_argument(
         "--trends-source",
@@ -130,7 +138,7 @@ def parse_args() -> argparse.Namespace:
         choices=["gsc", "pytrends"],
         default="gsc",
         help="Fonte das tendências: gsc (padrão, first-party, 90 dias) ou "
-             "pytrends (legado, não-oficial, índice global 12 meses).",
+        "pytrends (legado, não-oficial, índice global 12 meses).",
     )
     parser.add_argument(
         "--nlp",
@@ -141,7 +149,7 @@ def parse_args() -> argparse.Namespace:
         "--content",
         action="store_true",
         help="Diagnóstico de qualidade de conteúdo (over-optimization / conteúdo raso). "
-             "Sinais locais sem cota; baixa o HTML das páginas de oportunidade. Enriquecido por --nlp.",
+        "Sinais locais sem cota; baixa o HTML das páginas de oportunidade. Enriquecido por --nlp.",
     )
     parser.add_argument(
         "--api-key",
@@ -159,13 +167,6 @@ def parse_args() -> argparse.Namespace:
         parser.error("--batch-report requer --batch.")
 
     return args
-
-
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para nomes de arquivo e fetch do sitemap."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
 
 
 class PipelineError(RuntimeError):
@@ -203,8 +204,8 @@ def run_pipeline(
         "content_verdicts": {"ok": n, "atencao": n, ...},
     }
     """
-    today  = date.today().isoformat()
-    domain = _normalize_domain(site)
+    today = date.today().isoformat()
+    domain = normalize_domain(site)
 
     print(f"\n=== GSC Posicionamento — {domain} — {today} ===\n")
 
@@ -226,17 +227,17 @@ def run_pipeline(
         print("[posicao] Nenhuma URL encontrada no sitemap. Encerrando.")
         historico_posicao = load_historico_posicao(domain)
         return {
-            "site":                   domain,
-            "date":                   today,
-            "urls_total":             0,
-            "urls_with_data":         0,
-            "health_score":           None,
-            "health_grade":           None,
-            "avg_position":           None,
-            "ctr":                    None,
-            "snapshot_count":         len(historico_posicao.get("snapshots", [])),
+            "site": domain,
+            "date": today,
+            "urls_total": 0,
+            "urls_with_data": 0,
+            "health_score": None,
+            "health_grade": None,
+            "avg_position": None,
+            "ctr": None,
+            "snapshot_count": len(historico_posicao.get("snapshots", [])),
             "cannibalization_groups": None,
-            "content_verdicts":       {},
+            "content_verdicts": {},
         }
 
     print(f"[posicao] {len(urls)} URLs encontradas no sitemap.\n")
@@ -272,10 +273,11 @@ def run_pipeline(
     # Salva API key se fornecida via --api-key
     if api_key:
         from fetchers.knowledge_graph import save_api_key
+
         save_api_key(api_key)
 
     # 10. Fase 5a — Knowledge Graph (sempre, se API key disponível)
-    api_key   = api_key or load_api_key()
+    api_key = api_key or load_api_key()
     kg_result = search_entity(domain, api_key=api_key, use_cache=not no_cache)
     print_kg_result(kg_result)
 
@@ -283,6 +285,7 @@ def run_pipeline(
     query_rows = None
     if queries or trends or content:
         from fetchers.position_fetcher import fetch_query_positions
+
         try:
             query_rows = fetch_query_positions(service, site, use_cache=not no_cache)
         except Exception as exc:
@@ -302,7 +305,8 @@ def run_pipeline(
         if consolidation_plan["redirects"]:
             save_redirects_csv(domain, today, consolidation_plan)
             save_redirects_txt(
-                domain, today,
+                domain,
+                today,
                 build_htaccess_block(consolidation_plan, today),
                 build_nginx_block(consolidation_plan, today),
             )
@@ -314,7 +318,12 @@ def run_pipeline(
             # Legado (--trends-source pytrends): índice global do Google
             # Trends via biblioteca não-oficial — frágil, mantido como opção.
             if query_rows:
-                from fetchers.trends_fetcher import fetch_trends, top_keywords_from_queries, print_trends
+                from fetchers.trends_fetcher import (
+                    fetch_trends,
+                    print_trends,
+                    top_keywords_from_queries,
+                )
+
                 top_kws = top_keywords_from_queries(query_rows)
                 if top_kws:
                     trends_data = fetch_trends(top_kws, domain, use_cache=not no_cache)
@@ -324,10 +333,11 @@ def run_pipeline(
         else:
             # P5 — padrão: dimensão `date` do GSC (oficial, sem rate-limit,
             # demanda REAL do próprio site em impressões/dia, 90 dias).
-            from fetchers.position_fetcher import fetch_date_trends
             from core.analytics import compute_date_trends, print_date_trends
+            from fetchers.position_fetcher import fetch_date_trends
+
             try:
-                raw_trends  = fetch_date_trends(service, site, use_cache=not no_cache)
+                raw_trends = fetch_date_trends(service, site, use_cache=not no_cache)
                 trends_data = compute_date_trends(raw_trends)
                 print_date_trends(trends_data)
             except Exception as exc:
@@ -337,15 +347,23 @@ def run_pipeline(
     nlp_results = None
     if nlp:
         from fetchers.nlp_analyzer import analyze_opportunity_urls, print_nlp_results
+
         nlp_results = analyze_opportunity_urls(
-            report["urls"], domain, api_key=api_key, use_cache=not no_cache,
+            report["urls"],
+            domain,
+            api_key=api_key,
+            use_cache=not no_cache,
         )
         print_nlp_results(nlp_results)
 
         # Relatório NLP detalhado — sempre gerado quando --nlp está ativo
         from reporters.nlp_report_generator import generate_nlp_report
+
         nlp_html = generate_nlp_report(
-            domain, today, nlp_results, query_rows=query_rows,
+            domain,
+            today,
+            nlp_results,
+            query_rows=query_rows,
         )
         save_nlp_report(domain, today, nlp_html)
 
@@ -353,9 +371,13 @@ def run_pipeline(
     content_results = None
     if content:
         from fetchers.content_fetcher import analyze_opportunity_content_quality
+
         content_results = analyze_opportunity_content_quality(
-            report["urls"], domain, query_rows=query_rows,
-            nlp_results=nlp_results, use_cache=not no_cache,
+            report["urls"],
+            domain,
+            query_rows=query_rows,
+            nlp_results=nlp_results,
+            use_cache=not no_cache,
         )
 
     # 14c. Fase 4c + Move 2 — histórico de posição por URL (com métricas de conteúdo)
@@ -364,6 +386,7 @@ def run_pipeline(
 
     # 14d. Move 2 — acompanhamento conteúdo × posição
     from core.content_quality import build_content_tracking, print_content_tracking
+
     tracking = build_content_tracking(historico_posicao)
     print_content_tracking(tracking)
 
@@ -374,13 +397,15 @@ def run_pipeline(
     # 16. Gera Excel se solicitado
     if excel:
         from reporters.excel_reporter import generate_excel
+
         hist_for_excel = (
-            historico_posicao
-            if len(historico_posicao.get("snapshots", [])) >= 2
-            else None
+            historico_posicao if len(historico_posicao.get("snapshots", [])) >= 2 else None
         )
         wb = generate_excel(
-            domain, today, data, report,
+            domain,
+            today,
+            data,
+            report,
             health=health,
             orphans=orphans if orphans else None,
             historico_posicao=hist_for_excel,
@@ -400,8 +425,12 @@ def run_pipeline(
 
     # 18. Dashboard HTML (sempre gerado)
     from reporters.html_reporter import generate_dashboard
+
     html = generate_dashboard(
-        domain, today, data, report,
+        domain,
+        today,
+        data,
+        report,
         health=health,
         orphans=orphans if orphans else None,
         historico_posicao=historico_posicao,
@@ -426,17 +455,17 @@ def run_pipeline(
                 verdict_counts[v] = verdict_counts.get(v, 0) + 1
 
     return {
-        "site":                   domain,
-        "date":                   today,
-        "urls_total":             report["summary"]["total_urls_sitemap"],
-        "urls_with_data":         report["summary"]["urls_with_data"],
-        "health_score":           health["score"],
-        "health_grade":           health["grade"],
-        "avg_position":           report["summary"]["avg_position_site"],
-        "ctr":                    report["summary"]["avg_ctr_percent"],
-        "snapshot_count":         len(historico_posicao.get("snapshots", [])),
+        "site": domain,
+        "date": today,
+        "urls_total": report["summary"]["total_urls_sitemap"],
+        "urls_with_data": report["summary"]["urls_with_data"],
+        "health_score": health["score"],
+        "health_grade": health["grade"],
+        "avg_position": report["summary"]["avg_position_site"],
+        "ctr": report["summary"]["avg_ctr_percent"],
+        "snapshot_count": len(historico_posicao.get("snapshots", [])),
         "cannibalization_groups": len(cannibalization) if cannibalization is not None else None,
-        "content_verdicts":       verdict_counts,
+        "content_verdicts": verdict_counts,
     }
 
 

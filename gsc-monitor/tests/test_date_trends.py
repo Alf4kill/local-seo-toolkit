@@ -25,39 +25,41 @@ from core.analytics import (
     compute_date_trends,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _date_data(site_vals: list, queries: "dict | None" = None) -> dict:
     """Monta o bruto de fetch_date_trends a partir de listas de impressões/dia."""
     dates = [f"2026-05-{d:02d}" for d in range(1, len(site_vals) + 1)]
     site_rows = [
-        {"date": dt, "clicks": v // 10, "impressions": v}
-        for dt, v in zip(dates, site_vals)
+        {"date": dt, "clicks": v // 10, "impressions": v} for dt, v in zip(dates, site_vals)
     ]
     query_rows = []
     for q, vals in (queries or {}).items():
         for dt, v in zip(dates, vals):
-            if v:   # API não retorna linha para dia sem dados
-                query_rows.append({"date": dt, "query": q,
-                                   "clicks": v // 10, "impressions": v})
-    return {"start_date": dates[0], "end_date": dates[-1],
-            "site_rows": site_rows, "query_rows": query_rows}
+            if v:  # API não retorna linha para dia sem dados
+                query_rows.append({"date": dt, "query": q, "clicks": v // 10, "impressions": v})
+    return {
+        "start_date": dates[0],
+        "end_date": dates[-1],
+        "site_rows": site_rows,
+        "query_rows": query_rows,
+    }
 
 
-RISING    = [10] * 10 + [15] * 10 + [30] * 10   # 1º terço 10 → último 30
+RISING = [10] * 10 + [15] * 10 + [30] * 10  # 1º terço 10 → último 30
 DECLINING = [30] * 10 + [15] * 10 + [10] * 10
-STABLE    = [10] * 30
+STABLE = [10] * 30
 
 
 # ---------------------------------------------------------------------------
 # Classificação por terços
 # ---------------------------------------------------------------------------
 
-class TestClassifyThirds(unittest.TestCase):
 
+class TestClassifyThirds(unittest.TestCase):
     def test_rising(self):
         trend, first, last = _classify_thirds(RISING)
         self.assertEqual(trend, "rising")
@@ -88,8 +90,8 @@ class TestClassifyThirds(unittest.TestCase):
 # compute_date_trends
 # ---------------------------------------------------------------------------
 
-class TestComputeDateTrends(unittest.TestCase):
 
+class TestComputeDateTrends(unittest.TestCase):
     def test_site_e_a_primeira_entrada(self):
         out = compute_date_trends(_date_data(RISING))
         self.assertEqual(list(out)[0], SITE_TREND_KEY)
@@ -106,7 +108,7 @@ class TestComputeDateTrends(unittest.TestCase):
     def test_top_n_por_impressoes_totais(self):
         queries = {
             "grande": [100] * 30,
-            "media":  [50] * 30,
+            "media": [50] * 30,
             "pequena": [1] * 30,
         }
         out = compute_date_trends(_date_data(STABLE, queries), top_n=2)
@@ -119,12 +121,12 @@ class TestComputeDateTrends(unittest.TestCase):
         q_vals = [0] * 20 + [40] * 10
         out = compute_date_trends(_date_data(STABLE, {"nova": q_vals}))
         entry = out["nova"]
-        self.assertEqual(len(entry["values"]), 30)   # alinhada ao eixo do site
+        self.assertEqual(len(entry["values"]), 30)  # alinhada ao eixo do site
         self.assertEqual(entry["values"][0], 0)
         self.assertEqual(entry["trend"], "rising")
 
     def test_sparse_com_poucos_dias(self):
-        q_vals = [0] * 25 + [10] * 5   # só 5 dias com dados
+        q_vals = [0] * 25 + [10] * 5  # só 5 dias com dados
         out = compute_date_trends(_date_data(STABLE, {"rara": q_vals}))
         self.assertTrue(out["rara"]["sparse"])
         self.assertFalse(out[SITE_TREND_KEY]["sparse"])
@@ -149,6 +151,7 @@ class TestComputeDateTrends(unittest.TestCase):
 # fetch_date_trends (service mockado, cache isolado)
 # ---------------------------------------------------------------------------
 
+
 class _FakeRequest:
     def __init__(self, resp):
         self._resp = resp
@@ -161,7 +164,7 @@ class _FakeService:
     """Imita service.searchanalytics().query(...).execute()."""
 
     def __init__(self, responses: dict):
-        self._responses = responses     # {("date",): resp, ("date","query"): resp}
+        self._responses = responses  # {("date",): resp, ("date","query"): resp}
         self.bodies = []
 
     def searchanalytics(self):
@@ -174,19 +177,22 @@ class _FakeService:
 
 def _api_responses():
     return {
-        ("date",): {"rows": [
-            {"keys": ["2026-05-01"], "clicks": 5.0, "impressions": 100.0},
-            {"keys": ["2026-05-02"], "clicks": 7.0, "impressions": 140.0},
-        ]},
-        ("date", "query"): {"rows": [
-            {"keys": ["2026-05-01", "kw a"], "clicks": 3.0, "impressions": 60.0},
-            {"keys": ["2026-05-02", "kw a"], "clicks": 4.0, "impressions": 80.0},
-        ]},
+        ("date",): {
+            "rows": [
+                {"keys": ["2026-05-01"], "clicks": 5.0, "impressions": 100.0},
+                {"keys": ["2026-05-02"], "clicks": 7.0, "impressions": 140.0},
+            ]
+        },
+        ("date", "query"): {
+            "rows": [
+                {"keys": ["2026-05-01", "kw a"], "clicks": 3.0, "impressions": 60.0},
+                {"keys": ["2026-05-02", "kw a"], "clicks": 4.0, "impressions": 80.0},
+            ]
+        },
     }
 
 
 class TestFetchDateTrends(unittest.TestCase):
-
     def setUp(self):
         self._original_dir = storage.RELATORIOS_DIR
         storage.RELATORIOS_DIR = tempfile.mkdtemp(prefix="gsc_test_dtrends_")
@@ -197,6 +203,7 @@ class TestFetchDateTrends(unittest.TestCase):
 
     def test_duas_chamadas_e_parsing(self):
         from fetchers.position_fetcher import fetch_date_trends
+
         svc = _FakeService(_api_responses())
         data = fetch_date_trends(svc, "ex.com", use_cache=False)
 
@@ -205,15 +212,18 @@ class TestFetchDateTrends(unittest.TestCase):
         self.assertEqual(svc.bodies[1]["dimensions"], ["date", "query"])
         self.assertEqual(svc.bodies[0]["dataState"], "final")
 
-        self.assertEqual(data["site_rows"][0],
-                         {"date": "2026-05-01", "clicks": 5, "impressions": 100})
-        self.assertEqual(data["query_rows"][1],
-                         {"date": "2026-05-02", "query": "kw a",
-                          "clicks": 4, "impressions": 80})
+        self.assertEqual(
+            data["site_rows"][0], {"date": "2026-05-01", "clicks": 5, "impressions": 100}
+        )
+        self.assertEqual(
+            data["query_rows"][1],
+            {"date": "2026-05-02", "query": "kw a", "clicks": 4, "impressions": 80},
+        )
         self.assertTrue(data["start_date"] < data["end_date"])
 
     def test_cache_hit_evita_api(self):
         from fetchers.position_fetcher import fetch_date_trends
+
         svc1 = _FakeService(_api_responses())
         first = fetch_date_trends(svc1, "ex.com", use_cache=True)
         self.assertEqual(len(svc1.bodies), 2)
@@ -221,25 +231,27 @@ class TestFetchDateTrends(unittest.TestCase):
         # 2ª chamada: serviço SEM respostas — se tocar a API, KeyError
         svc2 = _FakeService({})
         second = fetch_date_trends(svc2, "ex.com", use_cache=True)
-        self.assertEqual(svc2.bodies, [])         # nenhuma chamada
+        self.assertEqual(svc2.bodies, [])  # nenhuma chamada
         self.assertEqual(second, first)
 
     def test_no_cache_sempre_consulta(self):
         from fetchers.position_fetcher import fetch_date_trends
+
         fetch_date_trends(_FakeService(_api_responses()), "ex.com", use_cache=True)
         svc = _FakeService(_api_responses())
         fetch_date_trends(svc, "ex.com", use_cache=False)
-        self.assertEqual(len(svc.bodies), 2)      # consultou mesmo com cache
+        self.assertEqual(len(svc.bodies), 2)  # consultou mesmo com cache
 
 
 # ---------------------------------------------------------------------------
 # Chart data — line (gsc) vs bar (pytrends legado)
 # ---------------------------------------------------------------------------
 
-class TestTrendsChartData(unittest.TestCase):
 
+class TestTrendsChartData(unittest.TestCase):
     def test_gsc_vira_linha_com_series(self):
         from reporters.html_reporter import _trends_chart_data
+
         out = compute_date_trends(_date_data(RISING, {"kw": STABLE}))
         chart = _trends_chart_data(out)
         self.assertEqual(chart["mode"], "line")
@@ -251,8 +263,16 @@ class TestTrendsChartData(unittest.TestCase):
 
     def test_pytrends_continua_barras(self):
         from reporters.html_reporter import _trends_chart_data
-        legacy = {"pizza": {"trend": "rising", "peak": 90, "latest": 80,
-                            "values": [1, 2], "sparse": False}}
+
+        legacy = {
+            "pizza": {
+                "trend": "rising",
+                "peak": 90,
+                "latest": 80,
+                "values": [1, 2],
+                "sparse": False,
+            }
+        }
         chart = _trends_chart_data(legacy)
         self.assertEqual(chart["mode"], "bar")
         self.assertEqual(chart["labels"], ["pizza"])
@@ -261,6 +281,7 @@ class TestTrendsChartData(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Regressão — guards do JS do dashboard
 # ---------------------------------------------------------------------------
+
 
 class TestDashboardJsGuards(unittest.TestCase):
     """
@@ -276,12 +297,15 @@ class TestDashboardJsGuards(unittest.TestCase):
         # Checa o padrão de GUARD ("if (window.X") — o comentário explicativo
         # do bugfix pode citar window.X livremente.
         from reporters.html_reporter import _JS
+
         for const in ("POS_DATA", "IDX_DATA", "HIST_DATA", "TRENDS_DATA"):
-            self.assertNotIn(f"if (window.{const}", _JS,
-                             f"guard window.{const} nunca é true com const global")
+            self.assertNotIn(
+                f"if (window.{const}", _JS, f"guard window.{const} nunca é true com const global"
+            )
 
     def test_guards_referenciam_constantes_diretamente(self):
         from reporters.html_reporter import _JS
+
         self.assertIn("if (POS_DATA)", _JS)
         self.assertIn("if (HIST_DATA && HIST_DATA.datasets.length > 0)", _JS)
         self.assertIn("if (TRENDS_DATA && TRENDS_DATA.mode === 'line'", _JS)

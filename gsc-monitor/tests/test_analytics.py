@@ -10,8 +10,8 @@ Cobre:
 
 import json
 import os
-import sys
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -19,14 +19,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.analytics import (
     calculate_health_score,
-    detect_orphan_pages,
     detect_cannibalization,
+    detect_orphan_pages,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_position_report(rows: list) -> dict:
     """Monta um position_report mínimo para os testes."""
@@ -35,8 +35,12 @@ def _make_position_report(rows: list) -> dict:
 
 def _row(url, position=None, clicks=0, impressions=0, ctr=0.0, has_data=True):
     return {
-        "url": url, "position": position, "clicks": clicks,
-        "impressions": impressions, "ctr": ctr, "has_data": has_data,
+        "url": url,
+        "position": position,
+        "clicks": clicks,
+        "impressions": impressions,
+        "ctr": ctr,
+        "has_data": has_data,
     }
 
 
@@ -44,8 +48,8 @@ def _row(url, position=None, clicks=0, impressions=0, ctr=0.0, has_data=True):
 # 4d — Score de saúde
 # ---------------------------------------------------------------------------
 
-class TestHealthScore(unittest.TestCase):
 
+class TestHealthScore(unittest.TestCase):
     def test_perfeito(self):
         """Site com 100% indexados, posição média 1, CTR perfeito."""
         rows = [_row("https://ex.com/1", position=1.0, impressions=1000, ctr=28.5)]
@@ -85,7 +89,7 @@ class TestHealthScore(unittest.TestCase):
         self.assertIn("components", h)
         self.assertIn("position", h["components"])
         self.assertIn("ctr", h["components"])
-        self.assertIn("component_alerts", h)          # P4
+        self.assertIn("component_alerts", h)  # P4
         self.assertIsInstance(h["component_alerts"], list)
 
     def test_grade_bom(self):
@@ -109,16 +113,15 @@ class TestHealthScore(unittest.TestCase):
 # P4 — Alertas por componente do health score
 # ---------------------------------------------------------------------------
 
-class TestComponentAlerts(unittest.TestCase):
 
+class TestComponentAlerts(unittest.TestCase):
     def test_composto_bom_com_ctr_critico_alerta(self):
         """
         O caso real (canilmansur): composto "Bom"/"Excelente" mascarando CTR
         péssimo. O alerta tem que apontar o CTR mesmo com o score geral alto.
         """
         # posição 1 (comp=100), indexação 100%, mas CTR 0.5% vs benchmark 28.5%
-        rows = [_row("https://ex.com/1", position=1.0, impressions=10000,
-                     clicks=50, ctr=0.5)]
+        rows = [_row("https://ex.com/1", position=1.0, impressions=10000, clicks=50, ctr=0.5)]
         report = _make_position_report(rows)
         consolidated = {"total_urls": 1, "summary": {"indexed": {"percent": 100.0}}}
         h = calculate_health_score(report, consolidated)
@@ -138,8 +141,7 @@ class TestComponentAlerts(unittest.TestCase):
 
     def test_tudo_bom_nao_alerta(self):
         """Site saudável em todos os componentes: zero alertas."""
-        rows = [_row("https://ex.com/1", position=1.0, impressions=1000,
-                     clicks=285, ctr=28.5)]
+        rows = [_row("https://ex.com/1", position=1.0, impressions=1000, clicks=285, ctr=28.5)]
         report = _make_position_report(rows)
         consolidated = {"total_urls": 1, "summary": {"indexed": {"percent": 100.0}}}
         h = calculate_health_score(report, consolidated)
@@ -147,18 +149,17 @@ class TestComponentAlerts(unittest.TestCase):
 
     def test_indexacao_sem_dados_nao_alerta_indexacao(self):
         """Sem indexação executada (None) não pode virar alerta de indexação."""
-        rows = [_row("https://ex.com/1", position=1.0, impressions=1000,
-                     clicks=285, ctr=28.5)]
+        rows = [_row("https://ex.com/1", position=1.0, impressions=1000, clicks=285, ctr=28.5)]
         report = _make_position_report(rows)
-        h = calculate_health_score(report, None)   # indexação = None
+        h = calculate_health_score(report, None)  # indexação = None
         comps = [a["component"] for a in h["component_alerts"]]
         self.assertNotIn("indexation", comps)
 
     def test_severidade_alto_entre_20_e_40(self):
         """Componente entre 20 e 40 = alerta 'alto' (não 'critico')."""
         from core.analytics import build_component_alerts
-        alerts = build_component_alerts({"indexation": 30.0, "position": 85.0,
-                                         "ctr": 90.0})
+
+        alerts = build_component_alerts({"indexation": 30.0, "position": 85.0, "ctr": 90.0})
         self.assertEqual(len(alerts), 1)
         self.assertEqual(alerts[0]["component"], "indexation")
         self.assertEqual(alerts[0]["severity"], "alto")
@@ -166,28 +167,30 @@ class TestComponentAlerts(unittest.TestCase):
     def test_multiplos_componentes_criticos(self):
         """Mais de um componente abaixo do limiar → um alerta por componente."""
         from core.analytics import build_component_alerts
-        alerts = build_component_alerts({"indexation": 5.0, "position": 10.0,
-                                         "ctr": 15.0})
+
+        alerts = build_component_alerts({"indexation": 5.0, "position": 10.0, "ctr": 15.0})
         self.assertEqual(len(alerts), 3)
         self.assertTrue(all(a["severity"] == "critico" for a in alerts))
 
     def test_mensagens_em_portugues_claro(self):
         """Cada alerta carrega 1 linha explicativa não-vazia em pt-BR."""
         from core.analytics import build_component_alerts
-        alerts = build_component_alerts({"indexation": 10.0, "position": 10.0,
-                                         "ctr": 10.0})
+
+        alerts = build_component_alerts({"indexation": 10.0, "position": 10.0, "ctr": 10.0})
         for a in alerts:
             self.assertGreater(len(a["message"]), 20)
-            self.assertTrue(any(ch.isdigit() for ch in a["message"]),
-                            "mensagem deve citar o valor do componente")
+            self.assertTrue(
+                any(ch.isdigit() for ch in a["message"]),
+                "mensagem deve citar o valor do componente",
+            )
 
 
 # ---------------------------------------------------------------------------
 # 4a — Páginas órfãs
 # ---------------------------------------------------------------------------
 
-class TestOrphanPages(unittest.TestCase):
 
+class TestOrphanPages(unittest.TestCase):
     def test_detecta_orfas(self):
         rows = [
             _row("https://ex.com/1", has_data=True, position=5.0),
@@ -221,12 +224,16 @@ class TestOrphanPages(unittest.TestCase):
 # 4b — Canibalização
 # ---------------------------------------------------------------------------
 
-class TestCannibalization(unittest.TestCase):
 
+class TestCannibalization(unittest.TestCase):
     def _query_row(self, query, url, position=5.0, clicks=10, impressions=100, ctr=10.0):
         return {
-            "query": query, "url": url, "position": position,
-            "clicks": clicks, "impressions": impressions, "ctr": ctr,
+            "query": query,
+            "url": url,
+            "position": position,
+            "clicks": clicks,
+            "impressions": impressions,
+            "ctr": ctr,
         }
 
     def test_detecta_canibalizacao(self):
@@ -254,7 +261,7 @@ class TestCannibalization(unittest.TestCase):
             self._query_row("kw1", "https://ex.com/b"),
             self._query_row("kw2", "https://ex.com/c"),
             self._query_row("kw2", "https://ex.com/d"),
-            self._query_row("kw2", "https://ex.com/e"),   # 3 URLs
+            self._query_row("kw2", "https://ex.com/e"),  # 3 URLs
         ]
         result = detect_cannibalization(rows)
         self.assertEqual(result[0]["query"], "kw2")
@@ -266,7 +273,7 @@ class TestCannibalization(unittest.TestCase):
             self._query_row("kw", "https://ex.com/a", position=2.0),
         ]
         result = detect_cannibalization(rows)
-        self.assertEqual(result[0]["urls"][0]["url"], "https://ex.com/a")   # menor posição primeiro
+        self.assertEqual(result[0]["urls"][0]["url"], "https://ex.com/a")  # menor posição primeiro
 
     def test_lista_vazia(self):
         result = detect_cannibalization([])
@@ -276,7 +283,9 @@ class TestCannibalization(unittest.TestCase):
         """URL com impressões abaixo do limiar não conta como concorrente."""
         rows = [
             self._query_row("kw", "https://ex.com/a", position=3.0, impressions=500),
-            self._query_row("kw", "https://ex.com/b", position=7.0, impressions=2),  # volume desprezível
+            self._query_row(
+                "kw", "https://ex.com/b", position=7.0, impressions=2
+            ),  # volume desprezível
         ]
         result = detect_cannibalization(rows)
         self.assertEqual(len(result), 0)
@@ -285,7 +294,9 @@ class TestCannibalization(unittest.TestCase):
         """URL com posição muito ruim não conta como concorrente."""
         rows = [
             self._query_row("kw", "https://ex.com/a", position=4.0, impressions=300),
-            self._query_row("kw", "https://ex.com/b", position=85.0, impressions=300),  # não compete
+            self._query_row(
+                "kw", "https://ex.com/b", position=85.0, impressions=300
+            ),  # não compete
         ]
         result = detect_cannibalization(rows)
         self.assertEqual(len(result), 0)
@@ -306,22 +317,25 @@ class TestCannibalization(unittest.TestCase):
 # 4c — Histórico de posicionamento por URL
 # ---------------------------------------------------------------------------
 
-class TestHistoricoPosicao(unittest.TestCase):
 
+class TestHistoricoPosicao(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         # Redireciona RELATORIOS_DIR para diretório temporário
         import core.storage as st
+
         self._orig_relatorios = st.RELATORIOS_DIR
         st.RELATORIOS_DIR = self.tmp
 
     def tearDown(self):
         import core.storage as st
+
         st.RELATORIOS_DIR = self._orig_relatorios
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_append_e_load(self):
         from core.storage import append_historico_posicao, load_historico_posicao
+
         rows = [
             _row("https://ex.com/1", position=5.0, clicks=10, impressions=200, has_data=True),
             _row("https://ex.com/2", has_data=False),
@@ -339,6 +353,7 @@ class TestHistoricoPosicao(unittest.TestCase):
 
     def test_deduplicacao_mesmo_dia(self):
         from core.storage import append_historico_posicao, load_historico_posicao
+
         rows = [_row("https://ex.com/1", position=5.0, clicks=10, impressions=200, has_data=True)]
         period = {"start": "2026-05-01", "end": "2026-05-30"}
         append_historico_posicao("www.ex.com", "2026-05-30", period, rows)
@@ -351,6 +366,7 @@ class TestHistoricoPosicao(unittest.TestCase):
 
     def test_limita_30_snapshots(self):
         from core.storage import append_historico_posicao, load_historico_posicao
+
         rows = [_row("https://ex.com/1", position=5.0, clicks=5, impressions=100, has_data=True)]
         period = {"start": "2026-01-01", "end": "2026-01-30"}
         for i in range(35):
@@ -361,25 +377,28 @@ class TestHistoricoPosicao(unittest.TestCase):
 
     def test_load_sem_arquivo(self):
         from core.storage import load_historico_posicao
+
         hist = load_historico_posicao("dominio.que.nao.existe")
         self.assertEqual(hist["snapshots"], [])
 
 
 class TestLoadLatestConsolidated(unittest.TestCase):
-
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         import core.storage as st
+
         self._orig = st.RELATORIOS_DIR
         st.RELATORIOS_DIR = self.tmp
 
     def tearDown(self):
         import core.storage as st
+
         st.RELATORIOS_DIR = self._orig
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_retorna_mais_recente(self):
-        from core.storage import load_latest_consolidated, _get_domain_dir
+        from core.storage import _get_domain_dir, load_latest_consolidated
+
         domain_dir = _get_domain_dir("www.ex.com")
         # Cria dois arquivos consolidados
         data_old = {"total_urls": 10, "summary": {"indexed": {"total": 8, "percent": 80.0}}}
@@ -395,6 +414,7 @@ class TestLoadLatestConsolidated(unittest.TestCase):
 
     def test_retorna_none_sem_arquivo(self):
         from core.storage import load_latest_consolidated
+
         result = load_latest_consolidated("dominio.sem.arquivo")
         self.assertIsNone(result)
 

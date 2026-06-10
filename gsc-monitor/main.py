@@ -20,7 +20,6 @@ Exemplos:
 """
 
 import sys
-import os
 
 # Força UTF-8 no stdout/stderr para caracteres Unicode funcionarem em qualquer
 # terminal Windows (que usa cp1252 por padrão no Python 3.13).
@@ -29,23 +28,26 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# Adiciona a pasta vendor/ ao path para uso em servidores sem pip global
-_vendor = os.path.join(os.path.dirname(__file__), "vendor")
-if os.path.isdir(_vendor) and _vendor not in sys.path:
-    sys.path.insert(0, _vendor)
-
 import argparse
-import sys
 from datetime import date
 
 from core.auth import build_service
 from core.sitemap import fetch_urls
-from fetchers.inspector import inspect_urls
-from reporters.reporter import build_detailed, build_consolidated, print_consolidated, print_detailed
 from core.storage import (
-    build_snapshot, append_historico,
-    save_detailed_report, save_consolidated_report,
-    save_text_report, save_csv_indexacao,
+    append_historico,
+    build_snapshot,
+    save_consolidated_report,
+    save_csv_indexacao,
+    save_detailed_report,
+    save_text_report,
+)
+from core.urls import normalize_domain
+from fetchers.inspector import inspect_urls
+from reporters.reporter import (
+    build_consolidated,
+    build_detailed,
+    print_consolidated,
+    print_detailed,
 )
 
 
@@ -68,7 +70,8 @@ def parse_args() -> argparse.Namespace:
         help="Limita o número de URLs inspecionadas (útil para testes).",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Exibe resultado detalhado por URL no terminal.",
     )
@@ -91,17 +94,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _normalize_domain(site: str) -> str:
-    """Extrai o domínio limpo para uso nos nomes de arquivo e sitemap fetch."""
-    if site.startswith("sc-domain:"):
-        return site[len("sc-domain:"):]
-    return site.removeprefix("https://").removeprefix("http://").rstrip("/")
-
-
 def main() -> None:
     args = parse_args()
     today = date.today().isoformat()  # ex: "2026-04-27"
-    domain = _normalize_domain(args.site)
+    domain = normalize_domain(args.site)
 
     print(f"\n=== GSC Monitor — {domain} — {today} ===\n")
 

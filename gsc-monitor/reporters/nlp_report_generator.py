@@ -20,48 +20,116 @@ from collections import Counter, defaultdict
 # ---------------------------------------------------------------------------
 
 _TYPE_COLORS = {
-    "PERSON":        ("#E65100", "#fff3e0"),
-    "ORGANIZATION":  ("#1565C0", "#e8f0fe"),
-    "LOCATION":      ("#2E7D32", "#e8f5e9"),
+    "PERSON": ("#E65100", "#fff3e0"),
+    "ORGANIZATION": ("#1565C0", "#e8f0fe"),
+    "LOCATION": ("#2E7D32", "#e8f5e9"),
     "CONSUMER_GOOD": ("#6A1B9A", "#f3e5f5"),
-    "WORK_OF_ART":   ("#00695C", "#e0f7fa"),
-    "EVENT":         ("#C62828", "#ffebee"),
-    "OTHER":         ("#546E7A", "#eceff1"),
-    "UNKNOWN":       ("#757575", "#f5f5f5"),
+    "WORK_OF_ART": ("#00695C", "#e0f7fa"),
+    "EVENT": ("#C62828", "#ffebee"),
+    "OTHER": ("#546E7A", "#eceff1"),
+    "UNKNOWN": ("#757575", "#f5f5f5"),
 }
 _TYPE_PT = {
-    "PERSON":        "Pessoa",
-    "ORGANIZATION":  "Organização",
-    "LOCATION":      "Local",
+    "PERSON": "Pessoa",
+    "ORGANIZATION": "Organização",
+    "LOCATION": "Local",
     "CONSUMER_GOOD": "Produto",
-    "WORK_OF_ART":   "Obra",
-    "EVENT":         "Evento",
-    "OTHER":         "Outro",
-    "UNKNOWN":       "Desconhecido",
+    "WORK_OF_ART": "Obra",
+    "EVENT": "Evento",
+    "OTHER": "Outro",
+    "UNKNOWN": "Desconhecido",
 }
 _TYPE_INTERP = {
-    "PERSON":        "A API classificou a entidade como humana. Quando isso ocorre para produtos ou raças, indica que o texto carece de contexto específico suficiente.",
-    "ORGANIZATION":  "Empresa, instituição ou entidade coletiva. Ideal para menções de marcas e órgãos.",
-    "LOCATION":      "Lugar, cidade ou região. Relevante para negócios locais e SEO geográfico.",
+    "PERSON": "A API classificou a entidade como humana. Quando isso ocorre para produtos ou raças, indica que o texto carece de contexto específico suficiente.",
+    "ORGANIZATION": "Empresa, instituição ou entidade coletiva. Ideal para menções de marcas e órgãos.",
+    "LOCATION": "Lugar, cidade ou região. Relevante para negócios locais e SEO geográfico.",
     "CONSUMER_GOOD": "Bem ou produto de consumo. Classificação ideal para páginas de produtos e serviços.",
-    "WORK_OF_ART":   "Obra, título de artigo ou publicação. Pode indicar que a API leu o título da página como entidade.",
-    "EVENT":         "Acontecimento ou ação no tempo. Termos como 'investimento' ou 'compra' podem ser classificados aqui.",
-    "OTHER":         "Entidade que não se encaixa nas categorias acima. Normal em conteúdo temático amplo.",
-    "UNKNOWN":       "Tipo não identificado pela API.",
+    "WORK_OF_ART": "Obra, título de artigo ou publicação. Pode indicar que a API leu o título da página como entidade.",
+    "EVENT": "Acontecimento ou ação no tempo. Termos como 'investimento' ou 'compra' podem ser classificados aqui.",
+    "OTHER": "Entidade que não se encaixa nas categorias acima. Normal em conteúdo temático amplo.",
+    "UNKNOWN": "Tipo não identificado pela API.",
 }
 
 # Stopwords PT para extração de termos de query (Seção 5)
-_PT_STOPWORDS = frozenset({
-    "de", "do", "da", "dos", "das", "e", "em", "um", "uma", "uns", "umas",
-    "para", "o", "a", "os", "as", "com", "no", "na", "nos", "nas",
-    "que", "ou", "como", "por", "se", "mais", "muito", "mas", "qual",
-    "quanto", "quanta", "quais", "quando", "onde", "quem", "pelo", "pela",
-    "pelos", "pelas", "ao", "aos", "num", "numa", "dum", "duma",
-    "este", "esta", "estes", "estas", "esse", "essa", "esses", "essas",
-    "seu", "sua", "seus", "suas", "meu", "minha", "me",
-    "eu", "tu", "ele", "ela", "nos", "eles", "elas",
-    "foi", "ser", "ter", "tem", "vai", "vou", "ver", "são",
-})
+_PT_STOPWORDS = frozenset(
+    {
+        "de",
+        "do",
+        "da",
+        "dos",
+        "das",
+        "e",
+        "em",
+        "um",
+        "uma",
+        "uns",
+        "umas",
+        "para",
+        "o",
+        "a",
+        "os",
+        "as",
+        "com",
+        "no",
+        "na",
+        "nos",
+        "nas",
+        "que",
+        "ou",
+        "como",
+        "por",
+        "se",
+        "mais",
+        "muito",
+        "mas",
+        "qual",
+        "quanto",
+        "quanta",
+        "quais",
+        "quando",
+        "onde",
+        "quem",
+        "pelo",
+        "pela",
+        "pelos",
+        "pelas",
+        "ao",
+        "aos",
+        "num",
+        "numa",
+        "dum",
+        "duma",
+        "este",
+        "esta",
+        "estes",
+        "estas",
+        "esse",
+        "essa",
+        "esses",
+        "essas",
+        "seu",
+        "sua",
+        "seus",
+        "suas",
+        "meu",
+        "minha",
+        "me",
+        "eu",
+        "tu",
+        "ele",
+        "ela",
+        "eles",
+        "elas",
+        "foi",
+        "ser",
+        "ter",
+        "tem",
+        "vai",
+        "vou",
+        "ver",
+        "são",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # CSS
@@ -134,6 +202,7 @@ footer{text-align:center;padding:20px;color:#aaa;font-size:11px;margin-top:8px}
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _h(s: str) -> str:
     """Escapa HTML básico."""
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -142,13 +211,13 @@ def _h(s: str) -> str:
 def _short_url(url: str) -> str:
     """Extrai a parte final legível de uma URL."""
     clean = url.rstrip("/")
-    part  = clean.split("/")[-1] if "/" in clean else clean
+    part = clean.split("/")[-1] if "/" in clean else clean
     return (part[:45] + "…") if len(part) > 45 else part or clean.split("//")[-1]
 
 
 def _type_badge(etype: str) -> str:
     fg, bg = _TYPE_COLORS.get(etype, ("#546E7A", "#eceff1"))
-    label  = _TYPE_PT.get(etype, etype.title())
+    label = _TYPE_PT.get(etype, etype.title())
     return (
         f'<span class="type-badge" '
         f'style="background:{bg};color:{fg};border-color:{fg}40" '
@@ -165,7 +234,7 @@ def _depth_score(url_data: dict) -> int:
       Saliência  (0/35) — saliência média das entidades; 0.10+ = nota máxima
       Entidades  (0/25) — qtd. de entidades; 8+ = nota máxima
     """
-    entities   = url_data.get("entities", [])
+    entities = url_data.get("entities", [])
     categories = url_data.get("categories", [])
 
     cat_pts = 40 if categories else 0
@@ -183,16 +252,19 @@ def _depth_score(url_data: dict) -> int:
 
 def _score_grade(score: int) -> tuple:
     """Retorna (label, cor_texto, cor_fundo)."""
-    if score >= 70: return ("Rico",       "#2E7D32", "#e8f5e9")
-    if score >= 50: return ("Moderado",   "#b06000", "#fff8e1")
-    if score >= 30: return ("Raso",       "#E65100", "#fff3e0")
-    return              ("Muito raso",  "#C62828", "#ffebee")
+    if score >= 70:
+        return ("Rico", "#2E7D32", "#e8f5e9")
+    if score >= 50:
+        return ("Moderado", "#b06000", "#fff8e1")
+    if score >= 30:
+        return ("Raso", "#E65100", "#fff3e0")
+    return ("Muito raso", "#C62828", "#ffebee")
 
 
 def _recommendations(url_data: dict, score: int) -> list:
     """Gera lista de recomendações baseada nos dados da página."""
-    recs       = []
-    entities   = url_data.get("entities", [])
+    recs = []
+    entities = url_data.get("entities", [])
     categories = url_data.get("categories", [])
 
     if not categories:
@@ -203,7 +275,7 @@ def _recommendations(url_data: dict, score: int) -> list:
 
     if entities:
         type_counts = Counter(e.get("type", "OTHER") for e in entities)
-        total       = len(entities)
+        total = len(entities)
 
         if type_counts.get("PERSON", 0) / total > 0.35:
             recs.append(
@@ -231,10 +303,14 @@ def _recommendations(url_data: dict, score: int) -> list:
         )
 
     if score < 50 and categories:
-        recs.append("Aumentar a profundidade — mesmo com categoria, a saliência indica conteúdo superficial.")
+        recs.append(
+            "Aumentar a profundidade — mesmo com categoria, a saliência indica conteúdo superficial."
+        )
 
     if not recs:
-        recs.append("Conteúdo bem estruturado. Monitorar posicionamento após próximas atualizações.")
+        recs.append(
+            "Conteúdo bem estruturado. Monitorar posicionamento após próximas atualizações."
+        )
 
     return recs
 
@@ -245,7 +321,7 @@ def _topical_pillars(nlp_results: dict) -> list:
     Indica os conceitos que o Google tende a associar ao domínio.
     """
     name_pages = defaultdict(set)
-    name_sals  = defaultdict(list)
+    name_sals = defaultdict(list)
     name_types = defaultdict(list)
 
     for url, data in nlp_results.items():
@@ -262,13 +338,15 @@ def _topical_pillars(nlp_results: dict) -> list:
     for name, urls in name_pages.items():
         if len(urls) >= 2:
             main_type = Counter(name_types[name]).most_common(1)[0][0]
-            avg_sal   = sum(name_sals[name]) / len(name_sals[name])
-            pillars.append({
-                "name":    name,
-                "type":    main_type,
-                "pages":   len(urls),
-                "avg_sal": round(avg_sal, 3),
-            })
+            avg_sal = sum(name_sals[name]) / len(name_sals[name])
+            pillars.append(
+                {
+                    "name": name,
+                    "type": main_type,
+                    "pages": len(urls),
+                    "avg_sal": round(avg_sal, 3),
+                }
+            )
 
     pillars.sort(key=lambda p: (-p["pages"], -p["avg_sal"]))
     return pillars
@@ -276,12 +354,12 @@ def _topical_pillars(nlp_results: dict) -> list:
 
 def _type_distribution(nlp_results: dict) -> dict:
     """Contagem de tipos de entidade por URL e global."""
-    per_url      = {}
+    per_url = {}
     global_count = Counter()
 
     for url, data in nlp_results.items():
         entities = data.get("entities", [])
-        counts   = Counter(e.get("type", "OTHER") for e in entities)
+        counts = Counter(e.get("type", "OTHER") for e in entities)
         per_url[url] = dict(counts)
         global_count.update(counts)
 
@@ -293,18 +371,20 @@ def _type_distribution(nlp_results: dict) -> dict:
 def _type_dist_chart_json(nlp_results: dict, dist: dict) -> str:
     """Serializa dados para o gráfico Chart.js de distribuição de tipos."""
     all_types = dist["all_types"]
-    per_url   = dist["per_url"]
-    urls      = list(nlp_results.keys())
+    per_url = dist["per_url"]
+    urls = list(nlp_results.keys())
 
-    labels   = [_short_url(u) for u in urls]
+    labels = [_short_url(u) for u in urls]
     datasets = []
     for etype in all_types:
         fg = _TYPE_COLORS.get(etype, ("#546E7A", "#eceff1"))[0]
-        datasets.append({
-            "label":           _TYPE_PT.get(etype, etype.title()),
-            "data":            [per_url.get(u, {}).get(etype, 0) for u in urls],
-            "backgroundColor": fg,
-        })
+        datasets.append(
+            {
+                "label": _TYPE_PT.get(etype, etype.title()),
+                "data": [per_url.get(u, {}).get(etype, 0) for u in urls],
+                "backgroundColor": fg,
+            }
+        )
 
     return json.dumps({"labels": labels, "datasets": datasets})
 
@@ -313,12 +393,10 @@ def _type_dist_chart_json(nlp_results: dict, dist: dict) -> str:
 # Helpers — Gaps de Conteúdo (Seção 5)
 # ---------------------------------------------------------------------------
 
+
 def _extract_query_terms(query: str) -> set:
     """Extrai termos significativos de uma query (sem stopwords PT, mín. 3 chars)."""
-    return {
-        t for t in query.lower().split()
-        if t not in _PT_STOPWORDS and len(t) >= 3
-    }
+    return {t for t in query.lower().split() if t not in _PT_STOPWORDS and len(t) >= 3}
 
 
 def _content_gaps(nlp_results: dict, query_rows: list) -> dict:
@@ -341,13 +419,13 @@ def _content_gaps(nlp_results: dict, query_rows: list) -> dict:
 
     result = {}
     for url, nlp_data in nlp_results.items():
-        key   = url.rstrip("/").lower()
-        qs    = sorted(url_qs.get(key, []), key=lambda r: -r.get("impressions", 0))
+        key = url.rstrip("/").lower()
+        qs = sorted(url_qs.get(key, []), key=lambda r: -r.get("impressions", 0))
         top_q = qs[:8]
 
         # Termos das queries + acumulador de impressões por termo
-        query_terms: set      = set()
-        term_impr: dict       = defaultdict(int)
+        query_terms: set = set()
+        term_impr: dict = defaultdict(int)
         for q in top_q:
             terms = _extract_query_terms(q.get("query", ""))
             for t in terms:
@@ -365,12 +443,12 @@ def _content_gaps(nlp_results: dict, query_rows: list) -> dict:
                         entity_terms.add(t)
 
         covered = query_terms & entity_terms
-        gaps    = query_terms - entity_terms
+        gaps = query_terms - entity_terms
 
         result[url] = {
-            "queries":          top_q,
-            "covered":          covered,
-            "gaps":             gaps,
+            "queries": top_q,
+            "covered": covered,
+            "gaps": gaps,
             "term_impressions": dict(term_impr),
         }
 
@@ -381,15 +459,16 @@ def _content_gaps(nlp_results: dict, query_rows: list) -> dict:
 # Seção 1 — Resumo Executivo
 # ---------------------------------------------------------------------------
 
+
 def _sec_executive_summary(nlp_results: dict, pillars: list) -> str:
-    n          = len(nlp_results)
-    n_cat      = sum(1 for d in nlp_results.values() if d.get("categories"))
-    n_no_cat   = n - n_cat
-    all_ents   = [e for d in nlp_results.values() for e in d.get("entities", [])]
-    n_ents     = len(all_ents)
-    scores     = [_depth_score(d) for d in nlp_results.values()]
-    avg_score  = round(sum(scores) / len(scores), 1) if scores else 0
-    n_rich     = sum(1 for s in scores if s >= 50)
+    n = len(nlp_results)
+    n_cat = sum(1 for d in nlp_results.values() if d.get("categories"))
+    n_no_cat = n - n_cat
+    all_ents = [e for d in nlp_results.values() for e in d.get("entities", [])]
+    n_ents = len(all_ents)
+    scores = [_depth_score(d) for d in nlp_results.values()]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else 0
+    n_rich = sum(1 for s in scores if s >= 50)
     _, sc, sbg = _score_grade(int(avg_score))
 
     # Diagnóstico
@@ -398,30 +477,59 @@ def _sec_executive_summary(nlp_results: dict, pillars: list) -> str:
     # Profundidade
     rich_pct = int(n_rich / n * 100) if n else 0
     if rich_pct >= 60:
-        diag.append(("✅", f"Profundidade: {rich_pct}% das páginas com score ≥ 50 — conteúdo moderado a rico."))
+        diag.append(
+            (
+                "✅",
+                f"Profundidade: {rich_pct}% das páginas com score ≥ 50 — conteúdo moderado a rico.",
+            )
+        )
     else:
-        diag.append(("⚠️", f"Profundidade: apenas {rich_pct}% das páginas com score ≥ 50 — maioria tem conteúdo raso."))
+        diag.append(
+            (
+                "⚠️",
+                f"Profundidade: apenas {rich_pct}% das páginas com score ≥ 50 — maioria tem conteúdo raso.",
+            )
+        )
 
     # Categorias
     if n_no_cat > 0:
-        diag.append(("⚠️", f"{n_no_cat} página(s) sem categoria — conteúdo insuficiente para classificação temática pelo Google."))
+        diag.append(
+            (
+                "⚠️",
+                f"{n_no_cat} página(s) sem categoria — conteúdo insuficiente para classificação temática pelo Google.",
+            )
+        )
     else:
-        diag.append(("✅", "Todas as páginas classificadas por categoria — bom sinal de profundidade."))
+        diag.append(
+            ("✅", "Todas as páginas classificadas por categoria — bom sinal de profundidade.")
+        )
 
     # Pilar dominante
     if pillars:
         top = pillars[0]
-        diag.append(("📌", f'Pilar temático dominante: "{_h(top["name"])}" — presente em {top["pages"]} de {n} páginas.'))
+        diag.append(
+            (
+                "📌",
+                f'Pilar temático dominante: "{_h(top["name"])}" — presente em {top["pages"]} de {n} páginas.',
+            )
+        )
     else:
-        diag.append(("ℹ️", "Sem pilares temáticos transversais — nenhuma entidade aparece em 2+ páginas."))
+        diag.append(
+            ("ℹ️", "Sem pilares temáticos transversais — nenhuma entidade aparece em 2+ páginas.")
+        )
 
     # Tipo mais comum
     if all_ents:
         top_type, top_cnt = Counter(e.get("type", "OTHER") for e in all_ents).most_common(1)[0]
         type_pct = int(top_cnt / n_ents * 100)
-        type_pt  = _TYPE_PT.get(top_type, top_type)
+        type_pt = _TYPE_PT.get(top_type, top_type)
         if top_type == "PERSON" and type_pct > 30:
-            diag.append(("⚠️", f"Tipo mais comum: '{type_pt}' ({type_pct}%) — muitas entidades classificadas como Pessoa indicam falta de contexto específico."))
+            diag.append(
+                (
+                    "⚠️",
+                    f"Tipo mais comum: '{type_pt}' ({type_pct}%) — muitas entidades classificadas como Pessoa indicam falta de contexto específico.",
+                )
+            )
         else:
             diag.append(("ℹ️", f"Tipo mais comum: '{type_pt}' ({type_pct}% das entidades)."))
 
@@ -466,6 +574,7 @@ def _sec_executive_summary(nlp_results: dict, pillars: list) -> str:
 # Seção 2 — Pilares Temáticos
 # ---------------------------------------------------------------------------
 
+
 def _sec_topical_pillars(pillars: list, n_total: int) -> str:
     if not pillars:
         return """
@@ -479,7 +588,7 @@ def _sec_topical_pillars(pillars: list, n_total: int) -> str:
     for p in pillars:
         bar_pct = int(p["avg_sal"] / 0.15 * 100)  # 0.15+ = barra cheia
         bar_pct = min(bar_pct, 100)
-        fg, bg  = _TYPE_COLORS.get(p["type"], ("#546E7A", "#eceff1"))
+        fg, bg = _TYPE_COLORS.get(p["type"], ("#546E7A", "#eceff1"))
         rows += f"""
       <tr>
         <td style="font-weight:600;max-width:200px">{_h(p["name"])}</td>
@@ -498,11 +607,15 @@ def _sec_topical_pillars(pillars: list, n_total: int) -> str:
       </tr>"""
 
     note = (
-        '<p class="note" style="margin-top:12px;background:#e8f5e9;border-color:#4caf50;color:#1B5E20">'
-        '💡 <strong>Topical Authority:</strong> entidades recorrentes sinalizam ao Google quais temas '
-        'o site domina. Quanto mais páginas tratam de um mesmo conceito de forma aprofundada, '
-        'maior a autoridade temática percebida.</p>'
-    ) if len(pillars) >= 3 else ""
+        (
+            '<p class="note" style="margin-top:12px;background:#e8f5e9;border-color:#4caf50;color:#1B5E20">'
+            "💡 <strong>Topical Authority:</strong> entidades recorrentes sinalizam ao Google quais temas "
+            "o site domina. Quanto mais páginas tratam de um mesmo conceito de forma aprofundada, "
+            "maior a autoridade temática percebida.</p>"
+        )
+        if len(pillars) >= 3
+        else ""
+    )
 
     return f"""
 <section id="pilares">
@@ -528,12 +641,13 @@ def _sec_topical_pillars(pillars: list, n_total: int) -> str:
 # Seção 3 — Score de Profundidade por Página
 # ---------------------------------------------------------------------------
 
+
 def _sec_depth_scores(nlp_results: dict) -> str:
     cards = ""
     for url, data in nlp_results.items():
-        score      = _depth_score(data)
+        score = _depth_score(data)
         label, sc, sbg = _score_grade(score)
-        entities   = data.get("entities", [])
+        entities = data.get("entities", [])
         categories = data.get("categories", [])
 
         # Componentes do score
@@ -555,24 +669,29 @@ def _sec_depth_scores(nlp_results: dict) -> str:
 
         # Categoria obtida
         cat_label = (
-            categories[0]["name"].rsplit("/", 1)[-1] + f' ({int(categories[0]["confidence"]*100)}%)'
-            if categories else "—"
+            categories[0]["name"].rsplit("/", 1)[-1]
+            + f" ({int(categories[0]['confidence'] * 100)}%)"
+            if categories
+            else "—"
         )
 
         # Entidades principais (inline badges)
-        ent_items = "".join(
-            f'<span style="display:inline-flex;align-items:center;gap:4px;'
-            f'background:#f0f4f8;border:1px solid #dde3ea;border-radius:14px;'
-            f'padding:3px 8px;font-size:11px">'
-            f'{_type_badge(e.get("type","OTHER"))} '
-            f'<span style="color:#333;font-weight:500">{_h(e["name"])}</span>'
-            f'<span style="color:#aaa;font-size:10px">{e["salience"]:.3f}</span>'
-            f'</span>'
-            for e in entities[:5]
-        ) or '<span style="color:#999;font-size:12px">Sem entidades detectadas</span>'
+        ent_items = (
+            "".join(
+                f'<span style="display:inline-flex;align-items:center;gap:4px;'
+                f"background:#f0f4f8;border:1px solid #dde3ea;border-radius:14px;"
+                f'padding:3px 8px;font-size:11px">'
+                f"{_type_badge(e.get('type', 'OTHER'))} "
+                f'<span style="color:#333;font-weight:500">{_h(e["name"])}</span>'
+                f'<span style="color:#aaa;font-size:10px">{e["salience"]:.3f}</span>'
+                f"</span>"
+                for e in entities[:5]
+            )
+            or '<span style="color:#999;font-size:12px">Sem entidades detectadas</span>'
+        )
 
         # Recomendações
-        recs      = _recommendations(data, score)
+        recs = _recommendations(data, score)
         recs_html = "".join(f"<li>{_h(r)}</li>" for r in recs)
 
         cards += f"""
@@ -649,10 +768,11 @@ def _sec_depth_scores(nlp_results: dict) -> str:
 # Seção 4 — Distribuição de Tipos
 # ---------------------------------------------------------------------------
 
+
 def _sec_type_distribution(nlp_results: dict, dist: dict) -> str:
-    all_types    = dist["all_types"]
+    all_types = dist["all_types"]
     global_count = dist["global"]
-    total_ents   = sum(global_count.values())
+    total_ents = sum(global_count.values())
 
     if not all_types:
         return """
@@ -664,34 +784,34 @@ def _sec_type_distribution(nlp_results: dict, dist: dict) -> str:
     # Tabela global
     global_rows = ""
     for etype in all_types:
-        cnt  = global_count.get(etype, 0)
-        pct  = cnt / total_ents * 100 if total_ents else 0
+        cnt = global_count.get(etype, 0)
+        pct = cnt / total_ents * 100 if total_ents else 0
         fg, bg = _TYPE_COLORS.get(etype, ("#546E7A", "#eceff1"))
         global_rows += (
-            f'<tr>'
-            f'<td>{_type_badge(etype)}</td>'
+            f"<tr>"
+            f"<td>{_type_badge(etype)}</td>"
             f'<td style="text-align:right;font-weight:600">{cnt}</td>'
             f'<td style="text-align:right">{pct:.1f}%</td>'
-            f'<td>'
+            f"<td>"
             f'<div class="comp-bar-bg">'
             f'<div class="comp-bar-fg" style="width:{int(pct)}%;background:{fg}"></div>'
-            f'</div>'
-            f'</td>'
-            f'</tr>'
+            f"</div>"
+            f"</td>"
+            f"</tr>"
         )
 
     # Cards de interpretação (apenas para tipos presentes)
     interp_cards = ""
     for etype in all_types:
         fg, bg = _TYPE_COLORS.get(etype, ("#546E7A", "#eceff1"))
-        label  = _TYPE_PT.get(etype, etype.title())
+        label = _TYPE_PT.get(etype, etype.title())
         interp = _TYPE_INTERP.get(etype, "")
         if interp:
             interp_cards += (
                 f'<div class="interp-card" '
                 f'style="background:{bg};color:#333;border-color:{fg}">'
                 f'<strong style="color:{fg}">{label}</strong><br>{interp}'
-                f'</div>'
+                f"</div>"
             )
 
     return f"""
@@ -726,6 +846,7 @@ def _sec_type_distribution(nlp_results: dict, dist: dict) -> str:
 # Seção 5 — Gaps de Conteúdo Semântico
 # ---------------------------------------------------------------------------
 
+
 def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
     if not query_rows:
         return """
@@ -738,7 +859,7 @@ def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
 </section>"""
 
     gaps_data = _content_gaps(nlp_results, query_rows)
-    has_any   = any(g["queries"] for g in gaps_data.values())
+    has_any = any(g["queries"] for g in gaps_data.values())
 
     if not has_any:
         return """
@@ -749,9 +870,9 @@ def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
 
     cards = ""
     for url, g in gaps_data.items():
-        queries   = g["queries"]
-        covered   = g["covered"]
-        gaps      = g["gaps"]
+        queries = g["queries"]
+        covered = g["covered"]
+        gaps = g["gaps"]
         term_impr = g["term_impressions"]
 
         if not queries:
@@ -760,7 +881,7 @@ def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
         # --- Lista de queries ---
         q_list = ""
         for q in queries[:5]:
-            pos_str  = f"{q.get('position', 0):.1f}"
+            pos_str = f"{q.get('position', 0):.1f}"
             impr_str = f"{q.get('impressions', 0):,}"
             q_list += (
                 f'<div style="display:flex;align-items:center;gap:10px;'
@@ -768,15 +889,15 @@ def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
                 f'<span style="color:#888;width:52px;flex-shrink:0">pos {pos_str}</span>'
                 f'<span style="flex:1;color:#333">{_h(q.get("query", ""))}</span>'
                 f'<span style="color:#888;width:76px;text-align:right;flex-shrink:0">'
-                f'{impr_str} impr.</span>'
-                f'</div>'
+                f"{impr_str} impr.</span>"
+                f"</div>"
             )
 
         # --- Pills cobertos (verde) ---
         covered_pills = (
             "".join(
                 f'<span style="display:inline-block;background:#e8f5e9;color:#2E7D32;'
-                f'border:1px solid #a5d6a7;border-radius:12px;padding:3px 10px;'
+                f"border:1px solid #a5d6a7;border-radius:12px;padding:3px 10px;"
                 f'font-size:11px;margin:2px;font-weight:600">{_h(t)}</span>'
                 for t in sorted(covered)
             )
@@ -790,15 +911,15 @@ def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
         gap_pills = (
             "".join(
                 f'<span style="display:inline-flex;align-items:center;gap:5px;'
-                f'background:#ffebee;color:#C62828;border:1px solid #ef9a9a;'
-                f'border-radius:12px;padding:3px 10px 3px 10px;font-size:11px;'
+                f"background:#ffebee;color:#C62828;border:1px solid #ef9a9a;"
+                f"border-radius:12px;padding:3px 10px 3px 10px;font-size:11px;"
                 f'margin:2px;font-weight:600" '
                 f'title="{term_impr.get(t, 0):,} impressões afetadas">'
-                f'{_h(t)}'
+                f"{_h(t)}"
                 f'<span style="background:#C62828;color:#fff;border-radius:8px;'
                 f'padding:1px 5px;font-size:10px;font-weight:700;line-height:1.4">'
-                f'{term_impr.get(t, 0):,}</span>'
-                f'</span>'
+                f"{term_impr.get(t, 0):,}</span>"
+                f"</span>"
                 for t in gaps_sorted[:12]
             )
             or '<span style="color:#2E7D32;font-size:12px;font-weight:600">✅ Sem gaps identificados</span>'
@@ -811,10 +932,10 @@ def _sec_content_gaps(nlp_results: dict, query_rows: "list | None") -> str:
                 f'<div style="margin-top:12px;padding:10px 14px;background:#fff3e0;'
                 f'border-left:3px solid #E65100;border-radius:4px;font-size:12px;color:#555">'
                 f'<strong style="color:#E65100">📊 Impacto estimado:</strong> '
-                f'abordar {len(gaps)} gap(s) pode melhorar o ranqueamento para queries com '
-                f'<strong>{total_gap_impr:,} impressões</strong> combinadas. '
-                f'Priorize os termos com maior número em vermelho — eles representam '
-                f'maior volume de buscas relacionadas.</div>'
+                f"abordar {len(gaps)} gap(s) pode melhorar o ranqueamento para queries com "
+                f"<strong>{total_gap_impr:,} impressões</strong> combinadas. "
+                f"Priorize os termos com maior número em vermelho — eles representam "
+                f"maior volume de buscas relacionadas.</div>"
             )
 
         cards += f"""
@@ -892,6 +1013,7 @@ _JS_CHART = """\
 # Montagem final
 # ---------------------------------------------------------------------------
 
+
 def generate_nlp_report(
     domain: str,
     today: str,
@@ -916,8 +1038,8 @@ def generate_nlp_report(
 Nenhum resultado NLP disponível para {domain}.</p></body></html>"""
 
     pillars = _topical_pillars(nlp_results)
-    dist    = _type_distribution(nlp_results)
-    n       = len(nlp_results)
+    dist = _type_distribution(nlp_results)
+    n = len(nlp_results)
 
     chart_json = _type_dist_chart_json(nlp_results, dist)
 
@@ -927,8 +1049,11 @@ Nenhum resultado NLP disponível para {domain}.</p></body></html>"""
     sec4 = _sec_type_distribution(nlp_results, dist)
     sec5 = _sec_content_gaps(nlp_results, query_rows)
 
-    gaps_nav = '<a href="#gaps">🔍 Gaps</a>' if query_rows else \
-               '<a href="#gaps" style="opacity:.5" title="Use --queries para ativar">🔍 Gaps</a>'
+    gaps_nav = (
+        '<a href="#gaps">🔍 Gaps</a>'
+        if query_rows
+        else '<a href="#gaps" style="opacity:.5" title="Use --queries para ativar">🔍 Gaps</a>'
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
