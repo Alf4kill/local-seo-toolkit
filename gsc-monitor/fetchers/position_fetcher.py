@@ -26,6 +26,7 @@ def fetch_positions(
     domain: str,
     sitemap_urls: list[str],
     use_cache: bool = True,
+    days_back: int = DAYS_BACK,
 ) -> dict:
     """
     Consulta a Search Analytics API e cruza os resultados com as URLs do sitemap.
@@ -36,6 +37,9 @@ def fetch_positions(
         sitemap_urls  — lista de URLs extraídas do sitemap.xml
         use_cache     — se True (padrão), utiliza cache em disco para o período.
                         Use False (--no-cache) para forçar chamada fresca à API.
+        days_back     — janela retroativa em dias (padrão: config.DAYS_BACK).
+                        O Plano de Poda usa janela longa (até ~16 meses, o
+                        máximo do GSC) para enxergar URLs antigas.
 
     Comportamento do cache:
         - A resposta completa da API (dict URL → métricas) é cacheada em
@@ -58,6 +62,10 @@ def fetch_positions(
                 "has_data":    bool,
             },
             ...
+        ],
+        "ghost_rows": [              # URLs com dados no GSC mas FORA do sitemap
+            {"url", "clicks", "impressions", "ctr", "position"},
+            ...                      # base do Plano de Poda (core/pruning.py)
         ]
     }
 
@@ -67,9 +75,9 @@ def fetch_positions(
 
     site_url = build_site_url(domain)
     cache_site = normalize_domain(domain)
-    start_date, end_date = _build_date_range()
+    start_date, end_date = _build_date_range(days_back)
 
-    print(f"[position_fetcher] Período  : {start_date}  a  {end_date}  ({DAYS_BACK} dias)")
+    print(f"[position_fetcher] Período  : {start_date}  a  {end_date}  ({days_back} dias)")
     print("[position_fetcher] País     : Global (sem filtro)")
 
     # ── Tentativa de cache hit ──────────────────────────────────────────────
@@ -142,11 +150,20 @@ def fetch_positions(
 
     rows.sort(key=lambda r: (not r["has_data"], r["position"] or 9999))
 
+    # URLs fantasma: têm dados no GSC mas estão fora do sitemap. Na convenção
+    # de sitemap completo, são páginas antigas — insumo do Plano de Poda.
+    from core.pruning import find_ghost_urls
+
+    ghost_rows = find_ghost_urls(api_data, sitemap_urls)
+    if ghost_rows:
+        print(f"[position_fetcher] URLs fora do sitemap (antigas?): {len(ghost_rows)}")
+
     return {
         "start_date": start_date,
         "end_date": end_date,
         "country": "global",
         "rows": rows,
+        "ghost_rows": ghost_rows,
     }
 
 
@@ -154,6 +171,7 @@ def fetch_query_positions(
     service,
     domain: str,
     use_cache: bool = True,
+    days_back: int = DAYS_BACK,
 ) -> list:
     """
     Consulta Search Analytics com dimensões [query, page] para análise de canibalização.
@@ -167,7 +185,7 @@ def fetch_query_positions(
 
     site_url = build_site_url(domain)
     cache_site = normalize_domain(domain)
-    start_date, end_date = _build_date_range()
+    start_date, end_date = _build_date_range(days_back)
 
     print("[position_fetcher] Consultando queries (canibalização)...")
 

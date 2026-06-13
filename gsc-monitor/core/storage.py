@@ -12,6 +12,12 @@ Estrutura de pastas (a partir desta versão):
             {data}_posicao.xlsx
             {data}_posicao.txt
             {data}_posicao.csv
+            poda/                         # artefatos do Plano de Poda
+                {data}_poda.csv
+                {data}_poda_apache.txt    # RedirectMatch ancorado
+                {data}_poda_redirect.txt  # estilo Redirect simples
+                {data}_poda_nginx.txt
+                {data}_poda.php
 
 Arquivos gerados por versões anteriores (formato plano) são mantidos intactos.
 """
@@ -483,4 +489,167 @@ def save_csv_posicao(site: str, date: str, report: dict) -> str:
                 ]
             )
     print(f"[storage] Relatório CSV de posicionamento salvo em: {filepath}")
+    return filepath
+
+
+# ---------------------------------------------------------------------------
+# Plano de Poda (core/pruning.py) — CSV editável + blocos de servidor
+# ---------------------------------------------------------------------------
+
+
+_PODA_QUERY_MAX_LEN = 60  # queries longas (perguntas inteiras) quebram a leitura
+
+
+def _poda_dir(site: str) -> str:
+    """
+    Diretório dedicado dos artefatos do Plano de Poda do domínio:
+        relatorios/{safe_domain}/poda/
+
+    Mantém os arquivos de poda (CSV editável, blocos Apache/nginx, PHP,
+    Redirect) separados dos relatórios de posição/indexação do domínio.
+    """
+    folder = os.path.join(_get_domain_dir(site), "poda")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _poda_path(site: str, date: str, suffix: str, ext: str) -> str:
+    """Caminho de um arquivo de poda dentro de relatorios/{dominio}/poda/."""
+    return os.path.join(_poda_dir(site), f"{date}_{suffix}.{ext}")
+
+
+def _poda_queries_cell(queries: list) -> str:
+    """Junta as top queries numa célula legível, truncando queries longas."""
+    shorts = []
+    for q in queries:
+        q = q.strip()
+        if len(q) > _PODA_QUERY_MAX_LEN:
+            q = q[: _PODA_QUERY_MAX_LEN - 3].rstrip() + "..."
+        shorts.append(q)
+    return " | ".join(shorts)
+
+
+def save_poda_csv(site: str, date: str, plan: dict) -> str:
+    """
+    Salva o Plano de Poda (SUGESTÃO) em CSV editável:
+        relatorios/{site}/poda/{date}_poda.csv
+
+    Formato pensado para o Excel pt-BR: delimitador ';' (separador de lista
+    padrão no Windows brasileiro — o arquivo abre direto em colunas) e
+    decimais com vírgula. O parser (core.pruning.parse_plan_csv) detecta o
+    delimitador automaticamente, então arquivos antigos com ',' seguem válidos.
+
+    Colunas (core.pruning.PLAN_CSV_COLUMNS): o analista edita apenas
+    acao_final (410/404/301/manter) e destino_final — logo após a url, já
+    pré-preenchidas com a sugestão; as demais são contexto somente-leitura.
+    Encoding utf-8-sig para Excel no Windows.
+    """
+    filepath = _poda_path(site, date, "poda", "csv")
+    with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
+        f.write(f"# {plan.get('disclaimer', 'SUGESTAO — revisar antes de aplicar')}\n")
+        f.write("# Edite acao_final (410/404/301/manter) e destino_final; depois compile.\n")
+        f.write(
+            "# Destinos 'home (fallback)' sao sugestao FRACA (ultimo recurso): "
+            "redirecionar muitas URLs para a home faz o Google tratar como "
+            "soft-404 (o redirect nao passa valor). Prefira um destino "
+            "relevante por URL, ou use 410.\n"
+        )
+        writer = csv.writer(f, delimiter=";")
+        from core.pruning import PLAN_CSV_COLUMNS
+
+        writer.writerow(PLAN_CSV_COLUMNS)
+        for e in plan.get("entries", []):
+            position = ""
+            if e["position"] is not None:
+                position = f"{e['position']:.1f}".replace(".", ",")
+            writer.writerow(
+                [
+                    e["url"],
+                    e["action"],
+                    e["suggested_target"] or "",
+                    e.get("origem", "busca"),
+                    e["impressions"],
+                    e["clicks"],
+                    position,
+                    e["target_source"] or "",
+                    _poda_queries_cell(e["top_queries"]),
+                ]
+            )
+    print(f"[storage] Plano de Poda (sugestao) salvo em: {filepath}")
+    return filepath
+
+
+def latest_poda_csv(site: str) -> "str | None":
+    """
+    Caminho do {date}_poda.csv mais recente do domínio, ou None.
+
+    Procura primeiro na pasta dedicada relatorios/{dominio}/poda/ e, por
+    retrocompatibilidade, na pasta do domínio (onde os CSVs eram gravados
+    antes da pasta poda) — assim planos antigos seguem compiláveis.
+    """
+    poda_dir = _poda_dir(site)
+    candidates = sorted(f for f in os.listdir(poda_dir) if f.endswith("_poda.csv"))
+    if candidates:
+        return os.path.join(poda_dir, candidates[-1])
+
+    domain_dir = _get_domain_dir(site)
+    legacy = sorted(f for f in os.listdir(domain_dir) if f.endswith("_poda.csv"))
+    if legacy:
+        return os.path.join(domain_dir, legacy[-1])
+    return None
+
+
+def load_poda_csv_lines(path: str) -> list:
+    """Lê o CSV do plano (com BOM do utf-8-sig) e retorna as linhas de texto."""
+    with open(path, encoding="utf-8-sig") as f:
+        return f.readlines()
+
+
+def save_poda_txt(site: str, date: str, apache_block: str, nginx_block: str) -> tuple:
+    """
+    Salva os blocos de servidor do Plano de Poda compilado:
+        relatorios/{site}/poda/{date}_poda_apache.txt   (.htaccess)
+        relatorios/{site}/poda/{date}_poda_nginx.txt    (server {})
+
+    Retorna (path_apache, path_nginx).
+    """
+    path_apache = _poda_path(site, date, "poda_apache", "txt")
+    with open(path_apache, "w", encoding="utf-8") as f:
+        f.write(apache_block)
+    print(f"[storage] Bloco Apache (poda) salvo em: {path_apache}")
+
+    path_nginx = _poda_path(site, date, "poda_nginx", "txt")
+    with open(path_nginx, "w", encoding="utf-8") as f:
+        f.write(nginx_block)
+    print(f"[storage] Bloco nginx (poda) salvo em: {path_nginx}")
+
+    return path_apache, path_nginx
+
+
+def save_poda_redirect(site: str, date: str, redirect_block: str) -> str:
+    """
+    Salva o bloco Apache no estilo `Redirect` do mod_alias (diretiva simples
+    `Redirect 301 /caminho/ https://destino/`), alternativa ao
+    RedirectMatch ancorado:
+        relatorios/{site}/poda/{date}_poda_redirect.txt
+    """
+    filepath = _poda_path(site, date, "poda_redirect", "txt")
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(redirect_block)
+    print(f"[storage] Bloco Redirect (poda) salvo em: {filepath}")
+    return filepath
+
+
+def save_poda_php(site: str, date: str, php_block: str) -> str:
+    """
+    Salva a versão PHP do plano compilado:
+        relatorios/{site}/poda/{date}_poda.php
+
+    Arquivo pronto para deploy: vai para a raiz do site e é incluído via
+    `require` no topo do index.php (WordPress: início do wp-config.php).
+    """
+    filepath = _poda_path(site, date, "poda", "php")
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(php_block)
+    print(f"[storage] Versao PHP (poda) salva em: {filepath}")
     return filepath

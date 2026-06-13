@@ -60,12 +60,18 @@ py posicao.py --site www.exemplo.com.br --excel --queries --content --nlp
 # CLI indexação (cuidado com a cota 2.000/dia — use --limit ao testar)
 py main.py --site www.exemplo.com.br --limit 10
 
+# Plano de Poda (P6) — URLs antigas = fora do sitemap (convenção: sitemap completo)
+py app_poda.py                                  # GUI dedicada (2 etapas)
+py poda.py --site www.exemplo.com.br            # etapa 1: gera {data}_poda.csv editável
+#   --dias 480 (janela, padrão ~16 meses)  --importar-gsc export.csv (relatório "Páginas")
+py poda.py --site www.exemplo.com.br --compilar # etapa 2: CSV revisado → blocos Apache/nginx
+
 # Batch headless (posições + queries + conteúdo por site; erros não abortam)
 py posicao.py --batch sites.txt --batch-report
 #   sites.txt: um domínio/linha, # comenta (modelo: sites.example.txt)
 #   --batch-report grava relatorios/_batch/YYYY-MM-DD_resumo.csv
 
-# Testes  (233 testes; rode da pasta gsc-monitor/)
+# Testes  (290 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 
@@ -127,6 +133,40 @@ run**; `historico_posicao.json` acumula até 30 snapshots por domínio.
   Apache/nginx (`.txt`, ASCII), sheet "Plano 301", seção no dashboard. Todos os
   outputs carregam o aviso de sugestão (regra de honestidade). Gerado sempre
   que há canibalização (requer `--queries`; no batch, automático).
+- **Plano de Poda (P6)** (`core/pruning.py` + `poda.py`/`app_poda.py`):
+  convenção da empresa — sitemap lista TODAS as páginas ativas → URL com dados
+  no GSC fora do sitemap = página antiga ("ghost"). `fetch_positions` agora
+  retorna `ghost_rows` (antes esse dado era descartado no cruzamento — custo
+  zero de API). Etapa 1 gera `{data}_poda.csv` editável: 410 sugerido p/ URL
+  sem tráfego; "revisar" p/ URL com cliques/impressões (NUNCA diretiva
+  automática com tráfego); destino 301 sugerido por query compartilhada
+  (home excluída) > slug semelhante (Jaccard ≥ 0.5) > **fallback da home**
+  (último recurso, `home_fallback=True`/`--sem-fallback-home` p/ desligar):
+  uma URL "revisar" sem destino por query/slug recebe a home (marcada
+  `home (fallback)`) para não deixar a célula em branco na revisão — sugestão
+  FRACA (Google trata redirect em massa p/ home como soft-404), a ação segue
+  "revisar" e a compilação avisa se muitas virarem 301; 410 sem tráfego NÃO
+  recebe fallback. **O destino sugerido é sempre canonizado para a URL exata do
+  sitemap atual** (a sugestão por query devolve a forma vista no GSC, que pode
+  diferir em barra final/www; o redirect tem de apontar para uma página ativa).
+  Etapa 2 (`--compilar`) valida o CSV
+  revisado e gera blocos Apache/nginx — `RedirectMatch` ancorado (não
+  prefix-match), query strings via RewriteCond/`$args`, aviso de soft-404 se >3
+  redirects para a home. Diff com normalização de URL
+  (www/https/barra final/percent-encoding) para não sugerir 410 de página viva.
+  **Limite de dado (P6.1):** a Search Analytics só enxerga URLs que apareceram
+  na busca — por isso a poda usa janela de 480 dias (≈16 meses, máx. do GSC) e
+  aceita `--importar-gsc` (export manual do relatório "Páginas" da UI; sem
+  API) para URLs com zero impressões, marcadas `origem=export-gsc`. Queries
+  de marca (compact match com o host) não pontuam destino 301. CSV editável é
+  `;`-delimitado com decimal vírgula (Excel pt-BR); o parser detecta `;`/`,`.
+  A compilação gera 4 formatos: Apache (`RedirectMatch` ancorado), Apache
+  estilo `Redirect` simples (`{data}_poda_redirect.txt` — `Redirect 301
+  /caminho/ destino`; prefix-match, p/ quem prefere a diretiva direta / painéis
+  tipo cPanel; URLs com query ficam só como comentário), nginx e
+  `{data}_poda.php` standalone (PHP 5.4+; `require` no topo do index.php /
+  wp-config.php — p/ hospedagem sem acesso à config do servidor). **Todos os
+  artefatos da poda ficam em `relatorios/{dominio}/poda/`** (subpasta dedicada).
 - **Qualidade de conteúdo** (`content_quality.py`): sinais LOCAIS sem cota
   (word_count, keyword_density, exact_repetitions, vocab_diversity) + sinais NLP
   opcionais (salience_concentration, entity_count, classified, target_in_salient).
