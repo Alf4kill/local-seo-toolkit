@@ -4,6 +4,6 @@
 # O núcleo de testes roda só com numpy (já em requirements.txt). pytest é o
 # runner único da suíte; ruff faz lint + format.
 
-pytest>=8.0
-pytest-cov>=5.0
-ruff==0.15.16
+pytest>=9.0.3
+pytest-cov>=7.1.0
+ruff==0.15.17
