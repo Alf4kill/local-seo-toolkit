@@ -299,9 +299,7 @@ class PodaWindow:
             if min_impr < 0:
                 raise ValueError
         except ValueError:
-            messagebox.showerror(
-                "Piso inválido", "O piso de impressões deve ser um inteiro >= 0."
-            )
+            messagebox.showerror("Piso inválido", "O piso de impressões deve ser um inteiro >= 0.")
             return
 
         try:

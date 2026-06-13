@@ -145,10 +145,22 @@ class TestBuildPruningPlan(unittest.TestCase):
     def test_destino_por_query_compartilhada(self):
         api = _api("https://www.ex.com/antiga-preco/", impressions=100)
         query_rows = [
-            {"query": "cane corso preco", "url": "https://www.ex.com/antiga-preco/",
-             "clicks": 0, "impressions": 100, "ctr": 0.0, "position": 12.0},
-            {"query": "cane corso preco", "url": "https://www.ex.com/cane-corso-preco/",
-             "clicks": 10, "impressions": 900, "ctr": 1.1, "position": 5.0},
+            {
+                "query": "cane corso preco",
+                "url": "https://www.ex.com/antiga-preco/",
+                "clicks": 0,
+                "impressions": 100,
+                "ctr": 0.0,
+                "position": 12.0,
+            },
+            {
+                "query": "cane corso preco",
+                "url": "https://www.ex.com/cane-corso-preco/",
+                "clicks": 10,
+                "impressions": 900,
+                "ctr": 1.1,
+                "position": 5.0,
+            },
         ]
         plan = build_pruning_plan(api, SITEMAP, query_rows=query_rows)
         entry = plan["entries"][0]
@@ -162,10 +174,22 @@ class TestBuildPruningPlan(unittest.TestCase):
         # (com barra final) — e ela que sera aplicada no redirect.
         api = _api("https://www.ex.com/antiga-preco/", impressions=100)
         query_rows = [
-            {"query": "cane corso preco", "url": "https://www.ex.com/antiga-preco/",
-             "clicks": 0, "impressions": 100, "ctr": 0.0, "position": 12.0},
-            {"query": "cane corso preco", "url": "https://www.ex.com/cane-corso-preco",
-             "clicks": 10, "impressions": 900, "ctr": 1.1, "position": 5.0},
+            {
+                "query": "cane corso preco",
+                "url": "https://www.ex.com/antiga-preco/",
+                "clicks": 0,
+                "impressions": 100,
+                "ctr": 0.0,
+                "position": 12.0,
+            },
+            {
+                "query": "cane corso preco",
+                "url": "https://www.ex.com/cane-corso-preco",
+                "clicks": 10,
+                "impressions": 900,
+                "ctr": 1.1,
+                "position": 5.0,
+            },
         ]
         plan = build_pruning_plan(api, SITEMAP, query_rows=query_rows)
         # SITEMAP tem "https://www.ex.com/cane-corso-preco/" (com barra)
@@ -177,10 +201,22 @@ class TestBuildPruningPlan(unittest.TestCase):
     def test_home_nunca_e_sugerida_por_query(self):
         api = _api("https://www.ex.com/antiga/", impressions=100)
         query_rows = [
-            {"query": "kw", "url": "https://www.ex.com/antiga/",
-             "clicks": 0, "impressions": 100, "ctr": 0.0, "position": 12.0},
-            {"query": "kw", "url": "https://www.ex.com/",
-             "clicks": 50, "impressions": 900, "ctr": 1.0, "position": 3.0},
+            {
+                "query": "kw",
+                "url": "https://www.ex.com/antiga/",
+                "clicks": 0,
+                "impressions": 100,
+                "ctr": 0.0,
+                "position": 12.0,
+            },
+            {
+                "query": "kw",
+                "url": "https://www.ex.com/",
+                "clicks": 50,
+                "impressions": 900,
+                "ctr": 1.0,
+                "position": 3.0,
+            },
         ]
         # home_fallback desligado isola o mecanismo de query: a home, ainda que
         # compartilhe a query, NUNCA é escolhida como destino por query.
@@ -220,10 +256,22 @@ class TestBuildPruningPlan(unittest.TestCase):
         # com destino confiável por query, o fallback da home não entra
         api = _api("https://www.ex.com/antiga-preco/", impressions=100)
         query_rows = [
-            {"query": "cane corso preco", "url": "https://www.ex.com/antiga-preco/",
-             "clicks": 0, "impressions": 100, "ctr": 0.0, "position": 12.0},
-            {"query": "cane corso preco", "url": "https://www.ex.com/cane-corso-preco/",
-             "clicks": 10, "impressions": 900, "ctr": 1.1, "position": 5.0},
+            {
+                "query": "cane corso preco",
+                "url": "https://www.ex.com/antiga-preco/",
+                "clicks": 0,
+                "impressions": 100,
+                "ctr": 0.0,
+                "position": 12.0,
+            },
+            {
+                "query": "cane corso preco",
+                "url": "https://www.ex.com/cane-corso-preco/",
+                "clicks": 10,
+                "impressions": 900,
+                "ctr": 1.1,
+                "position": 5.0,
+            },
         ]
         plan = build_pruning_plan(api, SITEMAP, query_rows=query_rows)
         entry = plan["entries"][0]
@@ -244,10 +292,22 @@ class TestBuildPruningPlan(unittest.TestCase):
         ]
         api = _api("https://www.exemplokits.com.br/sobre-nos/", impressions=100)
         query_rows = [
-            {"query": "exemplo kits", "url": "https://www.exemplokits.com.br/sobre-nos/",
-             "clicks": 2, "impressions": 100, "ctr": 2.0, "position": 3.0},
-            {"query": "exemplo kits", "url": "https://www.exemplokits.com.br/embalagens/",
-             "clicks": 5, "impressions": 300, "ctr": 1.7, "position": 5.0},
+            {
+                "query": "exemplo kits",
+                "url": "https://www.exemplokits.com.br/sobre-nos/",
+                "clicks": 2,
+                "impressions": 100,
+                "ctr": 2.0,
+                "position": 3.0,
+            },
+            {
+                "query": "exemplo kits",
+                "url": "https://www.exemplokits.com.br/embalagens/",
+                "clicks": 5,
+                "impressions": 300,
+                "ctr": 1.7,
+                "position": 5.0,
+            },
         ]
         plan = build_pruning_plan(api, sitemap, query_rows=query_rows)
         self.assertNotEqual(plan["entries"][0]["target_source"], "query compartilhada")
@@ -259,11 +319,22 @@ class TestBuildPruningPlan(unittest.TestCase):
         ]
         api = _api("https://www.exemplokits.com.br/kit-mitigacao/", impressions=100)
         query_rows = [
-            {"query": "kit mitigacao", "url": "https://www.exemplokits.com.br/kit-mitigacao/",
-             "clicks": 2, "impressions": 100, "ctr": 2.0, "position": 8.0},
-            {"query": "kit mitigacao",
-             "url": "https://www.exemplokits.com.br/o-que-e-kit-mitigacao/",
-             "clicks": 5, "impressions": 300, "ctr": 1.7, "position": 5.0},
+            {
+                "query": "kit mitigacao",
+                "url": "https://www.exemplokits.com.br/kit-mitigacao/",
+                "clicks": 2,
+                "impressions": 100,
+                "ctr": 2.0,
+                "position": 8.0,
+            },
+            {
+                "query": "kit mitigacao",
+                "url": "https://www.exemplokits.com.br/o-que-e-kit-mitigacao/",
+                "clicks": 5,
+                "impressions": 300,
+                "ctr": 1.7,
+                "position": 5.0,
+            },
         ]
         plan = build_pruning_plan(api, sitemap, query_rows=query_rows)
         self.assertEqual(
@@ -307,9 +378,7 @@ class TestExtractUrls(unittest.TestCase):
             '"https://www.ex.com/antiga-2/",2026-05-03\n',
         ]
         urls = extract_urls_from_lines(lines, "www.ex.com")
-        self.assertEqual(
-            urls, ["https://www.ex.com/antiga-1/", "https://www.ex.com/antiga-2/"]
-        )
+        self.assertEqual(urls, ["https://www.ex.com/antiga-1/", "https://www.ex.com/antiga-2/"])
 
     def test_linhas_sem_url_ignoradas(self):
         self.assertEqual(extract_urls_from_lines(["Motivo,Páginas\n", "404,15\n"], "ex.com"), [])
@@ -376,9 +445,7 @@ class TestParsePlanCsv(unittest.TestCase):
         self.assertEqual(out["kept"], ["https://ex.com/b"])
 
     def test_aviso_de_redirects_em_massa_para_home(self):
-        rows = [
-            f"https://ex.com/p{i},9,0,,,revisar,,,301,https://ex.com/" for i in range(5)
-        ]
+        rows = [f"https://ex.com/p{i},9,0,,,revisar,,,301,https://ex.com/" for i in range(5)]
         out = parse_plan_csv(_csv_lines(*rows))
         self.assertEqual(len(out["warnings"]), 1)
         self.assertIn("soft-404", out["warnings"][0])
@@ -474,8 +541,11 @@ class TestPodaPhp(unittest.TestCase):
     def test_mesmo_path_query_e_sem_query_agrupados_query_primeiro(self):
         entries = [
             {"url": "https://ex.com/oculos", "action": "410", "target": None},
-            {"url": "https://ex.com/oculos?slug=oculos-de-seguranca", "action": "410",
-             "target": None},
+            {
+                "url": "https://ex.com/oculos?slug=oculos-de-seguranca",
+                "action": "410",
+                "target": None,
+            },
         ]
         block = build_poda_php(entries, "2026-06-12")
         self.assertEqual(block.count("'/oculos' => array("), 1)
@@ -602,8 +672,14 @@ class TestPodaStorage(unittest.TestCase):
         long_query = "as perneiras sao utilizadas para proteger as pernas " * 4
         api = _api("https://www.ex.com/perneiras-velha/", impressions=100)
         query_rows = [
-            {"query": long_query, "url": "https://www.ex.com/perneiras-velha/",
-             "clicks": 0, "impressions": 100, "ctr": 0.0, "position": 10.0},
+            {
+                "query": long_query,
+                "url": "https://www.ex.com/perneiras-velha/",
+                "clicks": 0,
+                "impressions": 100,
+                "ctr": 0.0,
+                "position": 10.0,
+            },
         ]
         plan = build_pruning_plan(api, SITEMAP, query_rows=query_rows)
         path = storage.save_poda_csv("ex.com", "2026-06-12", plan)
@@ -623,9 +699,7 @@ class TestPodaStorage(unittest.TestCase):
     def test_arquivos_vao_para_subpasta_poda(self):
         path = storage.save_poda_csv("ex.com", "2026-06-12", self._plan())
         self.assertIn(os.path.join("ex.com", "poda"), path)
-        self.assertTrue(
-            os.path.isdir(os.path.join(storage.RELATORIOS_DIR, "ex.com", "poda"))
-        )
+        self.assertTrue(os.path.isdir(os.path.join(storage.RELATORIOS_DIR, "ex.com", "poda")))
 
     def test_save_poda_redirect_roundtrip(self):
         block = build_poda_redirect(
