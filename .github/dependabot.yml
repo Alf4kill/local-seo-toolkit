@@ -1,0 +1,26 @@
+# Dependabot: alertas e PRs de atualização para as dependências dos dois
+# pacotes Python + as actions da CI. Agrupado em PRs semanais para reduzir ruído.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/gsc-monitor"
+    schedule:
+      interval: "weekly"
+    groups:
+      gsc-monitor-deps:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/semantic-analyzer"
+    schedule:
+      interval: "weekly"
+    groups:
+      semantic-analyzer-deps:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
