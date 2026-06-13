@@ -428,6 +428,128 @@ com 6 linhas). Regressão: testes garantem que `_JS` não contém `window.X`.
 
 ---
 
+### P6 — Plano de Poda: remoção planejada de URLs antigas ✅ (2026-06-12)
+**Arquivos novos:** `core/pruning.py`, `poda.py` (CLI), `app_poda.py` (GUI),
+`gui/poda_window.py`, `gui/poda_runner.py`, `tests/test_pruning.py`
+**Arquivos modificados:** `fetchers/position_fetcher.py`, `core/storage.py`
+
+**Premissa (convenção da empresa):** o sitemap (+ image-sitemap) lista TODAS
+as páginas ativas → URL conhecida pelo Google fora do sitemap = página antiga.
+Insight de implementação: `fetch_positions` já baixava todas as páginas do
+GSC e **descartava** as fora do sitemap no cruzamento — agora elas voltam em
+`ghost_rows` (custo zero de API; dado já estava no cache).
+
+**Fluxo em 2 etapas (revisão humana obrigatória entre elas):**
+1. `py poda.py --site dominio` (ou `py app_poda.py`) → `{data}_poda.csv`
+   editável: ação sugerida **410** para URL sem tráfego; **"revisar"** para
+   URL com cliques > 0 ou impressões ≥ piso (nunca diretiva automática com
+   tráfego — regra de honestidade). Destino 301 sugerido por query
+   compartilhada com página ativa (home excluída) > slug semelhante
+   (Jaccard ≥ 0.5, reusa `slug_phrase` do P3).
+2. Analista edita `acao_final` (410/404/301/manter) e `destino_final`;
+   `--compilar` valida (301 exige destino absoluto ≠ origem; aviso de
+   soft-404 se >3 redirects para a home) e gera `{data}_poda_apache.txt` +
+   `{data}_poda_nginx.txt`.
+
+**Detalhes anti-tiro-no-pé:** diff com normalização (http/https, www, barra
+final, percent-encoding — falso fantasma = 410 numa página viva);
+`RedirectMatch` ancorado em vez de `Redirect` (que faz prefix-match e
+derrubaria sub-páginas ativas); URLs com query string via
+`RewriteCond %{QUERY_STRING}` (Apache) e `if ($args = ...)` (nginx).
+
+**Testes:** `tests/test_pruning.py` — 40 novos (normalização, diff, plano,
+parse do CSV, blocos, roundtrip storage). `py -m pytest` → **273 testes OK**
+
+---
+
+### P6.1 — Poda: janela 16 meses, import do export GSC, CSV pt-BR ✅ (2026-06-12)
+**Motivado pelo teste real num site cliente:** o plano achou ~25 URLs
+enquanto o GSC mostrava ~400 não indexadas, e o CSV abria desorganizado.
+
+**Causas e correções:**
+1. **Poucos resultados** — a Search Analytics só retorna URLs que APARECERAM
+   na busca, e a janela era 30 dias. Agora: `days_back` parametrizado em
+   `fetch_positions`/`fetch_query_positions`; poda usa **480 dias** (~16
+   meses, máx. do GSC) por padrão (`--dias`). Para URLs com **zero
+   impressões** (ex.: "Rastreada, mas não indexada"), novo `--importar-gsc`
+   (CLI) / campo "Export GSC" (GUI): lê o export manual do relatório
+   "Páginas" (csv/txt/xlsx ou pasta) e injeta as URLs fora do sitemap com
+   `origem=export-gsc` (não há API para esse relatório).
+2. **CSV desorganizado** — novo formato: `;`-delimitado + decimal vírgula
+   (Excel pt-BR abre direto em colunas); colunas editáveis (`acao_final`,
+   `destino_final`) logo após a `url`, pré-preenchidas; colunas redundantes
+   removidas; coluna `origem`; queries truncadas em 60 chars. O parser
+   detecta `;`/`,` — CSVs antigos seguem compiláveis.
+3. **Bug no .htaccess** — path com barra final + query string gerava pattern
+   com barra dupla (`^blog/page/8//?$`). Corrigido (strip em ambos os lados).
+4. **Sugestão de destino fraca** — queries de marca ("exemplo kits")
+   casavam com qualquer página e geravam 301 sem relação (ex.: /sobre-nos/ →
+   /embalagens). Agora query cujo compact casa com o host não pontua destino.
+
+**Testes:** +9 em `tests/test_pruning.py` (brand filter, extra_urls/origem,
+extração de URLs do export, delimitador novo/legado, decimal vírgula,
+truncamento, regressão da barra dupla). `py -m pytest` → **282 testes OK**
+
+---
+
+### P6.2 — Poda: versão PHP do plano compilado ✅ (2026-06-12)
+**Por quê:** os sites da empresa rodam PHP em hospedagem Plesk/shared, onde
+nem sempre dá para editar a config do servidor — e em WordPress o `.htaccess`
+é reescrito pelo próprio CMS.
+
+`build_poda_php` (core/pruning.py) gera `{data}_poda.php` standalone com a
+MESMA semântica dos blocos de servidor: caminho exato com barra final
+tolerada (`rtrim`), regra com query string exige `$args` exata, regra sem
+query casa qualquer query; regras agrupadas por path (query-específicas
+testadas primeiro). Uso: copiar para a raiz + `require` no topo do
+`index.php` (WordPress: início do `wp-config.php`, sobrevive a updates).
+Compatível com PHP 5.4+ (`http_response_code`); strings escapadas; comentário
+com a URL original acima de cada regra. Gerado automaticamente na etapa 2
+junto com Apache/nginx (CLI e GUI). Validado recompilando o plano real da
+um site cliente (CSV legado em vírgula → parser detectou o formato).
+
+**Testes:** +8 (`TestPodaPhp`). `py -m pytest` → **290 testes OK**
+
+---
+
+### P6.3 — Poda: destino canonizado, estilo `Redirect`, subpasta dedicada ✅ (2026-06-13)
+**Motivado por pedido de ajuste após o teste real num site cliente.**
+
+1. **Destino 301 sempre do sitemap atual** — a sugestão por query devolvia a
+   URL na forma vista no GSC (que difere da canônica do sitemap em barra
+   final/www/esquema). `build_pruning_plan` agora **canoniza** o destino para a
+   string exata do sitemap (via o mapa `whitelist` normalizado → URL do
+   sitemap). Garante que o redirect aponta para uma página comprovadamente
+   ativa, não para uma variação.
+2. **Novo formato `Redirect` simples (mod_alias)** — `build_poda_redirect`
+   (core/pruning.py) gera `{data}_poda_redirect.txt` no estilo
+   `Redirect 301 /caminho/ destino` / `Redirect 410 /caminho/`, preservando a
+   barra final original. Alternativa ao `RedirectMatch` ancorado para quem
+   prefere a diretiva direta (painéis tipo cPanel). **Atenção documentada:**
+   faz prefix-match; URLs com query string (não representáveis por `Redirect`)
+   ficam só como comentário apontando para o arquivo Apache com RewriteRule. O
+   `RedirectMatch` ancorado segue sendo o padrão seguro.
+3. **Subpasta dedicada** — todos os artefatos da poda (CSV, Apache, Redirect,
+   nginx, PHP) agora vão para `relatorios/{dominio}/poda/` (helpers `_poda_dir`
+   /`_poda_path` em core/storage.py). `latest_poda_csv` procura na subpasta e,
+   por retrocompatibilidade, na pasta do domínio (CSVs antigos seguem
+   compiláveis). Arquivos existentes do site cliente migrados para a subpasta.
+4. **Fallback da home (destino de último recurso)** — URLs "revisar" sem
+   destino por query/slug deixavam `destino_final` em branco na revisão. Novo
+   `home_fallback` (padrão True) em `build_pruning_plan`: preenche com a home
+   do site (de `_homepage_url`, lida do sitemap), marcada `home (fallback)`.
+   Mantém a honestidade: a ação continua "revisar" (nunca diretiva automática),
+   só vale para URLs COM tráfego (410 sem tráfego não redireciona), e a rede de
+   segurança do soft-404 segue ativa (`parse_plan_csv` avisa se >3 viram 301
+   para a home). Desligável via `--sem-fallback-home` (CLI) / checkbox (GUI).
+
+**Testes:** +13 em `tests/test_pruning.py` (canonização do destino,
+`TestPodaRedirect`, subpasta poda, roundtrip do redirect, retrocompat do
+`latest_poda_csv`, fallback da home: liga/desliga, prioridade vs query, não se
+aplica a 410). `py -m pytest` → **302 testes OK**
+
+---
+
 ## Projeto Completo
 
 ## Dependências instaladas

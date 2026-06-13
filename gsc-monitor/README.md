@@ -128,6 +128,41 @@ tarefa agendada usa o refresh silencioso do token, sem abrir janelas).
 .\.venv\Scripts\python.exe main.py --site www.exemplo.com.br --limit 10
 ```
 
+### Plano de Poda — remoção de páginas antigas (GUI dedicada + CLI)
+
+Premissa (convenção interna): o sitemap lista **todas** as páginas ativas —
+qualquer URL que o Google conhece e que está fora do sitemap é uma página
+antiga, candidata a remoção (410/404) ou a 301 quando ainda rende impressões.
+
+```powershell
+# Interface gráfica dedicada
+.\.venv\Scripts\python.exe app_poda.py
+
+# CLI — Etapa 1: gera o plano editável ({data}_poda.csv)
+.\.venv\Scripts\python.exe poda.py --site www.exemplo.com.br
+
+# (analista revisa o CSV: acao_final = 410/404/301/manter + destino_final)
+
+# CLI — Etapa 2: compila o CSV revisado em blocos Apache/nginx
+.\.venv\Scripts\python.exe poda.py --site www.exemplo.com.br --compilar
+```
+
+| Flag | Descrição |
+|------|-----------|
+| `--compilar [CSV]` | Etapa 2; sem valor, usa o `*_poda.csv` mais recente do domínio |
+| `--min-impressoes N` | Piso de impressões para marcar `revisar` (padrão: 10) |
+| `--dias N` | Janela da Search Analytics (padrão: 480 ≈ 16 meses, máx. do GSC) |
+| `--importar-gsc ARQ` | Export do relatório "Páginas" do GSC (csv/txt/xlsx ou pasta) |
+| `--sem-fallback-home` | Não sugere a home quando não há destino por query/slug (deixa `destino_final` em branco) |
+| `--no-cache` | Ignora cache e força dados frescos da API |
+
+> ℹ A Search Analytics só enxerga URLs que **apareceram na busca** no período
+> — por isso o plano usa janela longa (16 meses) por padrão. URLs antigas com
+> **zero impressões** (ex.: "Rastreada, mas não indexada" no GSC) são
+> invisíveis à API: exporte o relatório de indexação na UI do Search Console
+> e importe com `--importar-gsc` (ou campo "Export GSC" na GUI) para
+> incluí-las no plano com origem `export-gsc`.
+
 ---
 
 ## Relatórios gerados
@@ -144,6 +179,14 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 | `YYYY-MM-DD_redirects.csv` | **Sugestão** de consolidação 301 (gerado quando há canibalização, via `--queries`) |
 | `YYYY-MM-DD_redirects_apache.txt` | Bloco `.htaccess` (Apache) com os 301 sugeridos |
 | `YYYY-MM-DD_redirects_nginx.txt` | Bloco `server {}` (nginx) com os 301 sugeridos |
+| `poda/YYYY-MM-DD_poda.csv` | Plano de Poda **editável**: URLs antigas (fora do sitemap) com ação sugerida |
+| `poda/YYYY-MM-DD_poda_apache.txt` | Bloco `.htaccess` compilado do plano de poda revisado (410/404/301) — `RedirectMatch` ancorado |
+| `poda/YYYY-MM-DD_poda_redirect.txt` | Mesmo plano no estilo `Redirect 301 /caminho/ destino` do mod_alias (diretiva simples; **prefix-match**) |
+| `poda/YYYY-MM-DD_poda_nginx.txt` | Bloco `server {}` compilado do plano de poda revisado |
+| `poda/YYYY-MM-DD_poda.php` | Versão PHP do plano compilado — `require` no topo do `index.php`/`wp-config.php` |
+
+> Os artefatos do Plano de Poda ficam na subpasta dedicada
+> `relatorios/{dominio}/poda/`.
 
 ### Plano de Consolidação 301 (sugestão)
 
@@ -160,6 +203,50 @@ da sheet "Plano 301" no Excel e de uma seção no dashboard.
 > Conflitos entre grupos (URL canônica em um grupo e concorrente em outro) são
 > resolvidos por prioridade de severidade e listados nos artefatos.
 
+### Plano de Poda (sugestão)
+
+O Plano de Poda cruza as páginas que o Google exibiu na busca (Search
+Analytics, 30 dias) com o sitemap. URLs fora do sitemap são páginas antigas:
+
+- **Sem tráfego** → ação sugerida `410` (remoção limpa; o Google esquece a
+  URL mais rápido do que com 404 passivo).
+- **Com tráfego** (cliques > 0 ou impressões ≥ piso) → ação `revisar`: é uma
+  oportunidade de capturar as impressões com um 301 — **quem decide é o
+  analista**, nunca a ferramenta. Quando possível, o plano sugere um destino
+  por query compartilhada com página ativa ou por slug semelhante. O destino
+  sugerido é sempre uma URL **do sitemap atual** (a sugestão é canonizada para
+  a forma exata listada no sitemap — uma página comprovadamente ativa).
+  Quando nenhum destino relevante é encontrado, a URL "revisar" recebe a
+  **home como sugestão de último recurso** (marcada `home (fallback)`), para
+  não deixar a célula `destino_final` em branco — desligue com
+  `--sem-fallback-home` (ou o checkbox na GUI). É uma sugestão **fraca**: o
+  Google trata redirect em massa para a home como soft-404, então a ação
+  permanece `revisar` e a compilação avisa se muitas virarem 301. URLs sem
+  tráfego (`410`) não recebem o fallback.
+
+O CSV gerado é o próprio arquivo de trabalho do analista: edite `acao_final`
+(`410`/`404`/`301`/`manter`) e `destino_final` (colunas logo após a URL, já
+pré-preenchidas com a sugestão), depois compile (`--compilar` ou botão
+"2 · Compilar blocos" na GUI). A compilação gera **quatro formatos** com a mesma
+semântica: bloco `.htaccess` (Apache, `RedirectMatch` ancorado), o mesmo plano
+no estilo `Redirect` simples do mod_alias (`{data}_poda_redirect.txt` —
+`Redirect 301 /caminho/ destino`, para quem prefere a diretiva direta ou usa
+painéis tipo cPanel; atenção: faz **prefix-match** e URLs com query ficam só
+como comentário), bloco `server {}` (nginx) e um
+`{data}_poda.php` standalone — para hospedagens onde não dá para editar a
+config do servidor (Plesk/shared hosting) ou onde o CMS sobrescreve o
+`.htaccess`: copie para a raiz e adicione `require __DIR__ . '/{data}_poda.php';`
+no topo do `index.php` (em WordPress, no início do `wp-config.php`, que
+sobrevive a updates do core). O arquivo usa
+delimitador `;` e decimais com vírgula — abre direto em colunas no Excel
+brasileiro; a coluna `origem` distingue URLs vistas na busca (`busca`) das
+importadas do export (`export-gsc`). Queries navegacionais de marca não geram
+sugestão de destino (casariam com qualquer página).
+
+> ⚠ **Nunca redirecione tudo para a home** — o Google trata redirect em massa
+> para a home como soft-404 (não passa valor). A ferramenta avisa quando
+> detecta esse padrão. URLs marcadas `revisar` não entram nos blocos.
+
 ---
 
 ## Testes
@@ -168,7 +255,7 @@ da sheet "Plano 301" no Excel e de uma seção no dashboard.
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Saída esperada: **233 testes OK**. Toda a suíte roda no pytest (config em
+Saída esperada: **290 testes OK**. Toda a suíte roda no pytest (config em
 `pytest.ini`); as chamadas de rede são mockadas, então nenhum teste gasta cota.
 
 ---
@@ -177,15 +264,18 @@ Saída esperada: **233 testes OK**. Toda a suíte roda no pytest (config em
 
 ```
 gsc-monitor/
-  app.py          ← entrada GUI
+  app.py          ← entrada GUI (posicionamento/indexação)
+  app_poda.py     ← entrada GUI: Plano de Poda
   posicao.py      ← CLI: posicionamento
   main.py         ← CLI: indexação
+  poda.py         ← CLI: Plano de Poda (gerar/compilar)
   config.py       ← BASE_DIR centralizado
   core/           ← lógica de negócio
     auth.py       ← OAuth2 Google
     cache.py      ← cache JSON por domínio
     storage.py    ← I/O de arquivos
     analytics.py  ← health score, páginas sem impressões, canibalização
+    pruning.py    ← Plano de Poda: diff GSC × sitemap, sugestões, blocos
     classifier.py ← mapeamento verdict → categoria
     sitemap.py    ← parser de sitemap.xml
   fetchers/       ← integração com APIs externas
@@ -200,8 +290,10 @@ gsc-monitor/
     excel_reporter.py    ← geração de Excel
     html_reporter.py     ← dashboard HTML
   gui/
-    main_window.py ← janela Tkinter
+    main_window.py ← janela Tkinter principal
     runner.py      ← execução em thread
+    poda_window.py ← janela do Plano de Poda (app_poda.py)
+    poda_runner.py ← execução em thread das etapas de poda
   tests/             ← suíte pytest: test_storage, test_cache, test_analytics,
                        test_ctr, test_classifier, test_sitemap, test_content_quality,
                        test_position_fetcher, test_phase5 (APIs), test_phase6 (dashboard)
