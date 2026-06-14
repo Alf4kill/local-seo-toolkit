@@ -327,9 +327,7 @@ def target_keywords_for_url(
 # ---------------------------------------------------------------------------
 
 
-def _densest_keyword(
-    text: str, target_keywords: list, url: "str | None", word_count: int
-) -> tuple:
+def _densest_keyword(text: str, target_keywords: list, url: "str | None", word_count: int) -> tuple:
     """Densidade máxima entre query GSC, slug e n-grama dominante (P3).
 
     Retorna (keyword, densidade, ocorrências, fonte). Em empate a prioridade é
