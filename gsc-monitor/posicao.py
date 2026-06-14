@@ -37,6 +37,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import argparse
+from dataclasses import dataclass
 from datetime import date
 
 from core.analytics import (
@@ -70,6 +71,26 @@ from core.urls import normalize_domain
 from fetchers.knowledge_graph import load_api_key, print_kg_result, search_entity
 from fetchers.position_fetcher import fetch_positions
 from reporters.position_reporter import build_position_report, print_position_report
+
+
+@dataclass(frozen=True)
+class ReportOptions:
+    """Opções de relatório — fonte única de verdade, compartilhada por CLI e GUI.
+
+    Adicionar um novo toggle aqui o disponibiliza para os dois caminhos sem
+    precisar alterar duas assinaturas de função (evita o drift CLI↔GUI).
+    """
+
+    txt: bool = False
+    excel: bool = False
+    csv: bool = False
+    no_cache: bool = False
+    queries: bool = False
+    trends: bool = False
+    trends_source: str = "gsc"
+    nlp: bool = False
+    content: bool = False
+    api_key: "str | None" = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,20 +195,7 @@ class PipelineError(RuntimeError):
     """Erro fatal em uma execução do pipeline (autenticação, sitemap, API)."""
 
 
-def run_pipeline(
-    site: str,
-    *,
-    txt: bool = False,
-    excel: bool = False,
-    csv: bool = False,
-    no_cache: bool = False,
-    queries: bool = False,
-    trends: bool = False,
-    trends_source: str = "gsc",
-    nlp: bool = False,
-    content: bool = False,
-    api_key: "str | None" = None,
-) -> dict:
+def run_pipeline(site: str, options: "ReportOptions | None" = None) -> dict:
     """
     Executa o pipeline completo de posicionamento para um site (sem GUI).
 
@@ -205,6 +213,21 @@ def run_pipeline(
         "content_verdicts": {"ok": n, "atencao": n, ...},
     }
     """
+    # Desempacota as opções para variáveis locais — o corpo abaixo permanece
+    # idêntico (mesmos nomes), preservando o comportamento exato.
+    if options is None:
+        options = ReportOptions()
+    txt = options.txt
+    excel = options.excel
+    csv = options.csv
+    no_cache = options.no_cache
+    queries = options.queries
+    trends = options.trends
+    trends_source = options.trends_source
+    nlp = options.nlp
+    content = options.content
+    api_key = options.api_key
+
     today = date.today().isoformat()
     domain = normalize_domain(site)
 
@@ -485,16 +508,18 @@ def _run_batch_mode(args: argparse.Namespace) -> None:
         # (cache-aware). Demais flags do CLI são repassadas a cada site.
         return run_pipeline(
             site,
-            txt=args.txt,
-            excel=args.excel,
-            csv=args.csv,
-            no_cache=args.no_cache,
-            queries=True,
-            content=True,
-            trends=args.trends,
-            trends_source=args.trends_source,
-            nlp=args.nlp,
-            api_key=args.api_key,
+            ReportOptions(
+                txt=args.txt,
+                excel=args.excel,
+                csv=args.csv,
+                no_cache=args.no_cache,
+                queries=True,
+                content=True,
+                trends=args.trends,
+                trends_source=args.trends_source,
+                nlp=args.nlp,
+                api_key=args.api_key,
+            ),
         )
 
     results = run_batch(sites, _pipeline)
@@ -517,16 +542,18 @@ def main() -> None:
     try:
         run_pipeline(
             args.site,
-            txt=args.txt,
-            excel=args.excel,
-            csv=args.csv,
-            no_cache=args.no_cache,
-            queries=args.queries,
-            trends=args.trends,
-            trends_source=args.trends_source,
-            nlp=args.nlp,
-            content=args.content,
-            api_key=args.api_key,
+            ReportOptions(
+                txt=args.txt,
+                excel=args.excel,
+                csv=args.csv,
+                no_cache=args.no_cache,
+                queries=args.queries,
+                trends=args.trends,
+                trends_source=args.trends_source,
+                nlp=args.nlp,
+                content=args.content,
+                api_key=args.api_key,
+            ),
         )
     except PipelineError as exc:
         print(f"\n[ERRO] {exc}")
