@@ -71,7 +71,7 @@ py posicao.py --batch sites.txt --batch-report
 #   sites.txt: um domínio/linha, # comenta (modelo: sites.example.txt)
 #   --batch-report grava relatorios/_batch/YYYY-MM-DD_resumo.csv
 
-# Testes  (290 testes; rode da pasta gsc-monitor/)
+# Testes  (303 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 

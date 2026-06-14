@@ -133,5 +133,5 @@ core/
   report.py          relatórios console + HTML
 relatorios/<site>/   relatórios gerados, organizados por site/data (estilo gsc-monitor):
                      AAAA-MM-DD_<tipo>.html  (clusters/consolidacao/links/diferenciacao/plano-completo)
-tests/               80 testes (núcleo numpy + LLM/hybrid/dedup/linkgraph sem servidor/ML)
+tests/               81 testes (núcleo numpy + LLM/hybrid/dedup/linkgraph sem servidor/ML)
 ```

@@ -156,10 +156,10 @@ Princípio para ESTES projetos (cota de API é o gargalo, não RAM):
 
 ```bash
 # gsc-monitor
-cd gsc-monitor && py -m pytest            # 154 testes
+cd gsc-monitor && py -m pytest            # 303 testes
 
 # semantic-analyzer
-cd semantic-analyzer && py -m pytest      # 80 testes
+cd semantic-analyzer && py -m pytest      # 81 testes
 
 # um arquivo só, verboso
 py -m pytest tests/test_classifier.py -v

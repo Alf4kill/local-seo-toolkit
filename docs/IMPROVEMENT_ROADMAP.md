@@ -15,16 +15,16 @@ written as **ready-to-send prompts for a Claude coding session**.
 | Separation of concerns | **Strong.** `core/` (pure logic) / `fetchers/` (network IO) / `reporters/` (output) layering makes the brain testable without spending API quota. |
 | Coupling between tools | **Deliberately loose.** File handoff (`*_posicao.json`), no import edge. Heavy ML deps stay isolated in semantic-analyzer. Correct call. |
 | Quota economics | **First-class.** Per-domain caches with sane TTLs, opt-in expensive paths (`--nlp`, `--trends`, `--llm`), errors never cached. |
-| Testability | **Good and improving.** 225 tests total (145 gsc-monitor + 80 semantic-analyzer), unified under pytest, zero network in tests, `conftest.py` isolates `RELATORIOS_DIR`. |
+| Testability | **Good and improving.** 384 tests total (303 gsc-monitor + 81 semantic-analyzer), unified under pytest, zero network in tests, `conftest.py` isolates `RELATORIOS_DIR`. A CI coverage gate now floors source coverage (40% gsc / 38% semantic). |
 | Honesty engineering | **The differentiator.** Conservative verdicts, re-normalized health score weights, cannibalization thresholds against false positives. Rare discipline. |
 
 **Weak points (all known, most documented in CLAUDE.md):**
 
-1. **Duplicated helpers** — `_normalize_domain` lives in both `posicao.py` and `position_fetcher.py`; drift risk on the cache-key invariant.
+1. **Duplicated helpers** — ~~`_normalize_domain` lives in both `posicao.py` and `position_fetcher.py`~~ ✓ **RESOLVED** — centralized in `core/urls.py` (`normalize_domain`).
 2. **Two call sites per report parameter** (`posicao.py` + `gui/runner.py`) — GUI silently lags CLI when someone forgets.
 3. **String-scraped logging** — GUI colorizes by matching `print` output (`[CACHE]`, `[ERRO]`). Fragile contract, blocks structured progress reporting.
 4. **Hardcoded constants scattered** — DAYS_BACK, CTR benchmarks, thresholds, `geo="BR"`, NLP noise classes for one specific template.
-5. **`pytrends` dependency** — unofficial, fragile, and redundant (GSC `date` dimension gives a first-party trend).
+5. **`pytrends` dependency** — unofficial and fragile. ✓ **ADDRESSED** — the default trends source is now first-party GSC `date`; `pytrends` was demoted to an opt-in legacy source and removed from the default `requirements.txt` (`pip install pytrends` only if you use `--trends-source pytrends`). Note: it is *not* fully redundant — it measures global search interest, which the first-party GSC signal does not.
 6. **Code size:** gsc-monitor ~7.3k LOC, semantic-analyzer ~2.3k LOC — still small enough to refactor cheaply. Now is the time to fix 1–4.
 
 ---
