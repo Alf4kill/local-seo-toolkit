@@ -18,6 +18,7 @@ if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
 from core.urls import normalize_domain
+from posicao import ReportOptions
 
 # ---------------------------------------------------------------------------
 # Redirect de stdout para a queue
@@ -125,15 +126,21 @@ def _run_position(
     today: str,
     formats: set,
     use_cache: bool,
-    do_queries: bool = False,
-    do_trends: bool = False,
-    trends_source: str = "gsc",
-    do_nlp: bool = False,
-    do_content: bool = False,
-    api_key: "str | None" = None,
+    options: "ReportOptions | None" = None,
     result_store: "dict | None" = None,
 ) -> None:
     """Executa o relatório de posicionamento (Search Analytics API) + Fase 4."""
+    # Desempacota as opções para os nomes locais — o corpo abaixo permanece
+    # idêntico (mesmos nomes), preservando o comportamento exato.
+    if options is None:
+        options = ReportOptions()
+    do_queries = options.queries
+    do_trends = options.trends
+    trends_source = options.trends_source
+    do_nlp = options.nlp
+    do_content = options.content
+    api_key = options.api_key
+
     from core.analytics import (
         build_consolidation_plan,
         build_htaccess_block,
@@ -451,12 +458,14 @@ def run_tasks(
                     today,
                     formats,
                     use_cache,
-                    do_queries=do_queries,
-                    do_trends=do_trends,
-                    trends_source=params.get("trends_source", "gsc"),
-                    do_nlp=do_nlp,
-                    do_content=do_content,
-                    api_key=api_key,
+                    ReportOptions(
+                        queries=do_queries,
+                        trends=do_trends,
+                        trends_source=params.get("trends_source", "gsc"),
+                        nlp=do_nlp,
+                        content=do_content,
+                        api_key=api_key,
+                    ),
                     result_store=result_store,
                 )
 
