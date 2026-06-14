@@ -67,12 +67,13 @@ jobs:
         run: python -m pytest --cov-fail-under=38
 
   # Varredura de vulnerabilidades nas dependências dos dois pacotes.
-  # NÃO-BLOQUEANTE por enquanto (continue-on-error): reporta CVEs sem reprovar o
-  # build. Quando o resultado estiver limpo, remova `continue-on-error` para
-  # tornar a checagem obrigatória.
+  # NÃO-BLOQUEANTE por enquanto: o `continue-on-error` fica em cada PASSO (não no
+  # job), que é o que o GitHub respeita para o status do check — o passo reporta
+  # os CVEs como aviso (job verde) sem reprovar o PR. Quando o resultado estiver
+  # limpo (ou os CVEs sem correção forem tratados com --ignore-vuln), remova os
+  # `continue-on-error` para tornar a checagem obrigatória.
   audit:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -80,6 +81,8 @@ jobs:
           python-version: "3.13.14"
       - run: pip install pip-audit
       - name: pip-audit (gsc-monitor)
+        continue-on-error: true
         run: pip-audit -r gsc-monitor/requirements.txt -r gsc-monitor/requirements-dev.txt
       - name: pip-audit (semantic-analyzer)
+        continue-on-error: true
         run: pip-audit -r semantic-analyzer/requirements.txt -r semantic-analyzer/requirements-dev.txt
