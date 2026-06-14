@@ -327,6 +327,105 @@ def target_keywords_for_url(
 # ---------------------------------------------------------------------------
 
 
+def _densest_keyword(
+    text: str, target_keywords: list, url: "str | None", word_count: int
+) -> tuple:
+    """Densidade máxima entre query GSC, slug e n-grama dominante (P3).
+
+    Retorna (keyword, densidade, ocorrências, fonte). Em empate a prioridade é
+    query > slug > n-grama (comparação estrita >).
+    """
+    candidates = []  # (densidade, ocorrências, keyword, fonte)
+    for kw in target_keywords:
+        d, occ = keyword_density(text, kw)
+        candidates.append((d, occ, kw, "query"))
+
+    slug_kw = slug_phrase(url)
+    if slug_kw:
+        # Slugs não têm acento — casa contra o texto normalizado
+        d, occ = keyword_density(_normalize_accents(text), _normalize_accents(slug_kw))
+        candidates.append((d, occ, slug_kw, "slug"))
+
+    ngram = dominant_ngram(text)
+    if ngram:
+        phrase, occ = ngram
+        n_words = len(phrase.split())
+        d = round(occ * n_words / word_count * 100.0, 2) if word_count else 0.0
+        candidates.append((d, occ, phrase, "ngram"))
+
+    densest_kw, max_density, occ_at_max, density_source = None, 0.0, 0, None
+    for d, occ, kw, source in candidates:
+        if d > max_density:
+            densest_kw, max_density, occ_at_max, density_source = kw, d, occ, source
+    return densest_kw, max_density, occ_at_max, density_source
+
+
+def _quality_flags(
+    word_count: int,
+    max_density: float,
+    exact_reps: int,
+    diversity: float,
+    *,
+    has_nlp: bool,
+    sal_conc: "float | None",
+    entity_cnt: "int | None",
+    entities: list,
+    classified: "bool | None",
+    in_salient: "bool | None",
+) -> list:
+    """Flags de qualidade (over-optimization / thin) a partir dos sinais medidos."""
+    flags = []
+    if word_count < MIN_WORDS:
+        flags.append("conteudo_curto")
+    if max_density >= KW_DENSITY_VERY_HIGH:
+        flags.append("densidade_muito_alta")
+    elif max_density >= KW_DENSITY_HIGH:
+        flags.append("densidade_alta")
+    if exact_reps >= EXACT_REPEAT_HIGH:
+        flags.append("repeticao_exata_alta")
+    if word_count > 0 and diversity < VOCAB_DIVERSITY_LOW:
+        flags.append("vocabulario_repetitivo")
+    if has_nlp:
+        if sal_conc is not None and sal_conc >= SALIENCE_CONC_HIGH:
+            flags.append("saliencia_concentrada")
+        if entity_cnt is not None and entity_cnt < MIN_ENTITIES_BREADTH and entities:
+            flags.append("amplitude_pobre")
+        if classified is False:
+            flags.append("nao_classificavel")
+        if in_salient is False:
+            flags.append("keyword_nao_saliente")
+    return flags
+
+
+def _quality_verdict(word_count: int, flags: list) -> str:
+    """Veredito conservador (raso/over_otimizado/atencao/ok) a partir das flags."""
+    over_score = sum(1 for f in flags if f in _OVER_FLAGS)
+    thin_score = sum(1 for f in flags if f in _THIN_FLAGS)
+    if word_count < THIN_HARD_WORDS or thin_score >= 2:
+        return "raso"
+    if over_score >= 2:
+        return "over_otimizado"
+    if over_score >= 1 or thin_score >= 1:
+        return "atencao"
+    return "ok"
+
+
+def _quality_reasons(
+    flags: list, densest_kw: "str | None", density_source: "str | None", max_density: float
+) -> list:
+    """Mensagens por flag; nas de densidade aponta o gatilho (keyword + fonte, P3)."""
+    reasons = []
+    for f in flags:
+        msg = _FLAG_REASONS.get(f)
+        if msg is None:
+            continue
+        if f in ("densidade_alta", "densidade_muito_alta") and densest_kw:
+            src = _DENSITY_SOURCE_LABELS.get(density_source, density_source)
+            msg += f' Gatilho: "{densest_kw}" ({src}, {max_density:.1f}%).'
+        reasons.append(msg)
+    return reasons
+
+
 def analyze_content_quality(
     text: str,
     target_keywords: "list | None" = None,
@@ -357,30 +456,10 @@ def analyze_content_quality(
     word_count = len(tokens)
     diversity = vocab_diversity(text)
 
-    # ── Densidade (P3): máximo entre query GSC, slug e n-grama dominante ────
-    # Ordem dos candidatos define a prioridade em empates (strict >).
-    candidates = []  # (densidade, ocorrências, keyword, fonte)
-    for kw in target_keywords:
-        d, occ = keyword_density(text, kw)
-        candidates.append((d, occ, kw, "query"))
-
-    slug_kw = slug_phrase(url)
-    if slug_kw:
-        # Slugs não têm acento — casa contra o texto normalizado
-        d, occ = keyword_density(_normalize_accents(text), _normalize_accents(slug_kw))
-        candidates.append((d, occ, slug_kw, "slug"))
-
-    ngram = dominant_ngram(text)
-    if ngram:
-        phrase, occ = ngram
-        n_words = len(phrase.split())
-        d = round(occ * n_words / word_count * 100.0, 2) if word_count else 0.0
-        candidates.append((d, occ, phrase, "ngram"))
-
-    densest_kw, max_density, occ_at_max, density_source = None, 0.0, 0, None
-    for d, occ, kw, source in candidates:
-        if d > max_density:
-            densest_kw, max_density, occ_at_max, density_source = kw, d, occ, source
+    # Densidade (P3): máximo entre query GSC, slug e n-grama dominante.
+    densest_kw, max_density, occ_at_max, density_source = _densest_keyword(
+        text, target_keywords, url, word_count
+    )
 
     exact_reps = _count_phrase(text.lower(), head_kw) if head_kw else 0
 
@@ -397,52 +476,20 @@ def analyze_content_quality(
     )
     classified = bool(categories) if has_nlp else None
 
-    # ── Flags ───────────────────────────────────────────────────────────────
-    flags = []
-    if word_count < MIN_WORDS:
-        flags.append("conteudo_curto")
-    if max_density >= KW_DENSITY_VERY_HIGH:
-        flags.append("densidade_muito_alta")
-    elif max_density >= KW_DENSITY_HIGH:
-        flags.append("densidade_alta")
-    if exact_reps >= EXACT_REPEAT_HIGH:
-        flags.append("repeticao_exata_alta")
-    if word_count > 0 and diversity < VOCAB_DIVERSITY_LOW:
-        flags.append("vocabulario_repetitivo")
-    if has_nlp:
-        if sal_conc is not None and sal_conc >= SALIENCE_CONC_HIGH:
-            flags.append("saliencia_concentrada")
-        if entity_cnt is not None and entity_cnt < MIN_ENTITIES_BREADTH and entities:
-            flags.append("amplitude_pobre")
-        if classified is False:
-            flags.append("nao_classificavel")
-        if in_salient is False:
-            flags.append("keyword_nao_saliente")
-
-    over_score = sum(1 for f in flags if f in _OVER_FLAGS)
-    thin_score = sum(1 for f in flags if f in _THIN_FLAGS)
-
-    # ── Veredito ────────────────────────────────────────────────────────────
-    if word_count < THIN_HARD_WORDS or thin_score >= 2:
-        verdict = "raso"
-    elif over_score >= 2:
-        verdict = "over_otimizado"
-    elif over_score >= 1 or thin_score >= 1:
-        verdict = "atencao"
-    else:
-        verdict = "ok"
-
-    # Reasons — para as flags de densidade, diz QUAL keyword disparou e de
-    # onde ela veio (P3: a explicação do veredito aponta o gatilho)
-    reasons = []
-    for f in flags:
-        msg = _FLAG_REASONS.get(f)
-        if msg is None:
-            continue
-        if f in ("densidade_alta", "densidade_muito_alta") and densest_kw:
-            src = _DENSITY_SOURCE_LABELS.get(density_source, density_source)
-            msg += f' Gatilho: "{densest_kw}" ({src}, {max_density:.1f}%).'
-        reasons.append(msg)
+    flags = _quality_flags(
+        word_count,
+        max_density,
+        exact_reps,
+        diversity,
+        has_nlp=has_nlp,
+        sal_conc=sal_conc,
+        entity_cnt=entity_cnt,
+        entities=entities,
+        classified=classified,
+        in_salient=in_salient,
+    )
+    verdict = _quality_verdict(word_count, flags)
+    reasons = _quality_reasons(flags, densest_kw, density_source, max_density)
 
     return {
         "word_count": word_count,
