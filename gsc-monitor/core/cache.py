@@ -14,7 +14,7 @@ TTL padrão:
 import json
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from core.storage import _get_domain_dir
 
@@ -58,7 +58,10 @@ def _read_entry(path: str) -> dict | None:
 def _write_entry(path: str, data) -> None:
     """Persiste dados no cache com timestamp de gravação."""
     entry = {
-        "cached_at": datetime.now().isoformat(timespec="seconds"),
+        # UTC explícito (ciente de fuso) — instante inequívoco, imune a DST /
+        # mudança de fuso do host. Entradas antigas (horário local ingênuo) são
+        # tratadas por _is_fresh para retrocompatibilidade.
+        "cached_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "data": data,
     }
     with open(path, "w", encoding="utf-8") as f:
@@ -71,7 +74,12 @@ def _is_fresh(entry: dict, max_age_hours: float) -> bool:
         cached_at = datetime.fromisoformat(entry["cached_at"])
     except (KeyError, ValueError):
         return False
-    return (datetime.now() - cached_at) <= timedelta(hours=max_age_hours)
+    # Compat: caches antigos gravavam horário local ingênuo (sem fuso).
+    # Interpreta-os como horário local do host e os torna cientes do fuso,
+    # para comparar instantes (não relógios de parede) com o "agora" em UTC.
+    if cached_at.tzinfo is None:
+        cached_at = cached_at.astimezone()
+    return (datetime.now(UTC) - cached_at) <= timedelta(hours=max_age_hours)
 
 
 # ---------------------------------------------------------------------------

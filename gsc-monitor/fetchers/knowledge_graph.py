@@ -13,7 +13,7 @@ Como obter a API key:
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import requests
 from config import BASE_DIR
@@ -122,7 +122,10 @@ def _read_kg_cache(domain: str) -> "dict | None":
         with open(path, encoding="utf-8") as f:
             entry = json.load(f)
         cached_at = datetime.fromisoformat(entry.get("cached_at", "2000-01-01"))
-        if (datetime.now() - cached_at) <= timedelta(hours=TTL_KG_HOURS):
+        # Compat: caches antigos gravavam horário local ingênuo (sem fuso).
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.astimezone()
+        if (datetime.now(UTC) - cached_at) <= timedelta(hours=TTL_KG_HOURS):
             return entry.get("data")
     except (json.JSONDecodeError, ValueError, OSError):
         pass
@@ -134,7 +137,10 @@ def _write_kg_cache(domain: str, data: dict) -> None:
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(
-                {"cached_at": datetime.now().isoformat(timespec="seconds"), "data": data},
+                {
+                    "cached_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "data": data,
+                },
                 f,
                 ensure_ascii=False,
                 indent=2,
