@@ -1,14 +1,23 @@
+# Versões FIXADAS (==) para builds reproduzíveis. numpy/scikit-learn/requests
+# são exatamente as que a suíte de testes valida (81 testes passam nelas) e que
+# a CI instala. Para travar TAMBÉM o stack de ML (sentence-transformers + torch
+# + transitivas, com hashes), gere um lock a partir do SEU ambiente de trabalho:
+#     pip install pip-tools
+#     pip-compile --generate-hashes -o requirements.lock requirements.txt
+# (sentence-transformers fica como faixa de propósito: fixá-lo às cegas poderia
+#  mudar embeddings/clusters — o lock do seu ambiente é a fonte da verdade.)
+
 # Núcleo (clusterer) — só numpy:
-numpy>=1.26
+numpy==2.2.6
 
 # Embeddings semânticos (recomendado) — puxa torch + transformers automaticamente.
-# Roda em CPU; 1º uso baixa o modelo (~470MB).
+# Roda em CPU; 1º uso baixa o modelo (~470MB). Trave a versão exata via lock (acima).
 sentence-transformers>=3.0
 
 # Fallback léxico (TF-IDF) e utilitários. (scikit-learn também vem com sentence-transformers.)
-scikit-learn>=1.4
+scikit-learn==1.7.2
 
 # Cliente HTTP do backend LLM local (core/llm.py). Dependência DIRETA — declarada
 # aqui para não depender do sentence-transformers puxá-la (modo tfidf-only e a
 # suíte de testes não instalam o ST).
-requests>=2.31
+requests==2.34.2
