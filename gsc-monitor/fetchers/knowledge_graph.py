@@ -100,7 +100,7 @@ def _is_plausible_match(brand: str, entity_name: str, entity_url: str, domain: s
             dom_first = domain.lower().removeprefix("www.").split(".")[0]
             if ent_first == dom_first:
                 return True
-        except Exception:
+        except Exception:  # noqa: BLE001 — match best-effort: URL inválida ⇒ sem correspondência
             pass
 
     return False

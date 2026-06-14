@@ -289,7 +289,7 @@ def run_pipeline(
 
         try:
             query_rows = fetch_query_positions(service, site, use_cache=not no_cache)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — relatório segue sem queries se a chamada falhar
             print(f"\n[ERRO] Falha ao buscar queries: {exc}")
 
     # 12. Fase 4b — canibalização de keywords
@@ -341,7 +341,7 @@ def run_pipeline(
                 raw_trends = fetch_date_trends(service, site, use_cache=not no_cache)
                 trends_data = compute_date_trends(raw_trends)
                 print_date_trends(trends_data)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — relatório segue sem tendências se a chamada falhar
                 print(f"\n[ERRO] Falha ao buscar tendências GSC: {exc}")
 
     # 14. Fase 5c — NLP (entidades, opt-in)

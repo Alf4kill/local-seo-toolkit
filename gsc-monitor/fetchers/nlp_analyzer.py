@@ -181,7 +181,7 @@ def _fetch_page_text(url: str, max_chars: int = MAX_TEXT_CHARS) -> "str | None":
         text = html_module.unescape(text)
         text = re.sub(r"\s+", " ", text).strip()
         return text[:max_chars] if text else None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — best-effort: falha de uma página não derruba o lote
         print(f"[nlp] ERRO ao buscar página {url}: {exc}")
         return None
 

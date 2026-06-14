@@ -96,7 +96,7 @@ def load_from_urls(urls: list, min_chars: int = 300, timeout: int = 12) -> dict:
             txt = extract_text(r.text)
             if len(txt) >= min_chars:
                 out[url] = txt
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — loader best-effort: pula URL que falha
             print(f"[loader] falha em {url}: {exc}")
     return out
 
@@ -154,6 +154,6 @@ def load_sources_from_urls(urls: list, timeout: int = 12) -> dict:
             r = requests.get(url, timeout=timeout, headers={"User-Agent": "semantic-analyzer/1.0"})
             r.raise_for_status()
             out[url] = r.text
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — loader best-effort: pula URL que falha
             print(f"[loader] falha em {url}: {exc}")
     return out

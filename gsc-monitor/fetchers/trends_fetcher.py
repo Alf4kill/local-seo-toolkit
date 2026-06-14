@@ -230,7 +230,7 @@ def fetch_trends(
             if use_cache:
                 _set_trends_cache(site, kw, geo, data)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — pytrends (não-oficial) lança vários tipos; isola por keyword
             print(f"[trends] ERRO para '{kw}': {exc}")
             results[kw] = {"trend": "stable", "peak": 0, "latest": 0, "values": [], "sparse": False}
 
