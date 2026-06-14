@@ -8,14 +8,14 @@
 #  mudar embeddings/clusters — o lock do seu ambiente é a fonte da verdade.)
 
 # Núcleo (clusterer) — só numpy:
-numpy==2.2.6
+numpy==2.4.6
 
 # Embeddings semânticos (recomendado) — puxa torch + transformers automaticamente.
 # Roda em CPU; 1º uso baixa o modelo (~470MB). Trave a versão exata via lock (acima).
-sentence-transformers>=3.0
+sentence-transformers>=5.5.1
 
 # Fallback léxico (TF-IDF) e utilitários. (scikit-learn também vem com sentence-transformers.)
-scikit-learn==1.7.2
+scikit-learn==1.9.0
 
 # Cliente HTTP do backend LLM local (core/llm.py). Dependência DIRETA — declarada
 # aqui para não depender do sentence-transformers puxá-la (modo tfidf-only e a
