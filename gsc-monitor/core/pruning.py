@@ -235,6 +235,77 @@ def _suggest_target_by_slug(
     return best_url, "slug semelhante"
 
 
+def _export_gsc_ghosts(extra_urls: "list | None", whitelist: dict, seen: set) -> list:
+    """Ghosts do export 'Páginas' do GSC: só os fora do sitemap e ainda não
+    vistos na busca (métricas 0, origem 'export-gsc'). Atualiza `seen` in place."""
+    out = []
+    for url in extra_urls or []:
+        norm = normalize_for_match(url)
+        if norm in whitelist or norm in seen:
+            continue
+        seen.add(norm)
+        out.append(
+            {
+                "url": url,
+                "clicks": 0,
+                "impressions": 0,
+                "ctr": 0.0,
+                "position": None,
+                "origem": "export-gsc",
+            }
+        )
+    return out
+
+
+def _build_ghost_entry(
+    ghost: dict,
+    ghost_queries: dict,
+    active_by_query: dict,
+    active_slug_tokens: list,
+    whitelist: dict,
+    brand: str,
+    home_url: "str | None",
+    min_impressions: int,
+) -> dict:
+    """Monta a entrada do plano para uma URL antiga: top queries, destino 301
+    sugerido (query > slug > fallback home) e ação (revisar | 410)."""
+    norm = normalize_for_match(ghost["url"])
+    rows = sorted(
+        ghost_queries.get(norm, []),
+        key=lambda r: -r.get("impressions", 0),
+    )
+    top_queries = [r["query"] for r in rows[:TOP_QUERIES_PER_URL]]
+
+    suggestion = _suggest_target_by_query(rows, active_by_query, brand_compact=brand)
+    if suggestion is None:
+        suggestion = _suggest_target_by_slug(ghost["url"], active_slug_tokens)
+
+    # O destino sugerido tem de ser uma URL do sitemap ATUAL (whitelist): a
+    # sugestão por query devolve a forma vista no GSC (que pode diferir da URL
+    # canônica do sitemap em barra final/www/esquema). Mapeia de volta para a
+    # string exata do sitemap — é ela que será aplicada no redirect.
+    if suggestion is not None:
+        canonical = whitelist.get(normalize_for_match(suggestion[0]))
+        if canonical is not None:
+            suggestion = (canonical, suggestion[1])
+
+    has_traffic = ghost["clicks"] > 0 or ghost["impressions"] >= min_impressions
+
+    # Fallback de ÚLTIMO RECURSO: URL com tráfego ("revisar") sem destino por
+    # query/slug recebe a home (sugestão FRACA; ação continua "revisar"). Não se
+    # aplica a 410 (sem tráfego não há o que redirecionar).
+    if suggestion is None and has_traffic and home_url:
+        suggestion = (home_url, "home (fallback)")
+
+    return {
+        **ghost,
+        "action": "revisar" if has_traffic else "410",
+        "top_queries": top_queries,
+        "suggested_target": suggestion[0] if suggestion else None,
+        "target_source": suggestion[1] if suggestion else None,
+    }
+
+
 def build_pruning_plan(
     api_pages: dict,
     sitemap_urls: list,
@@ -291,21 +362,7 @@ def build_pruning_plan(
 
     # URLs do export do GSC: só as fora do sitemap e ainda não vistas na busca
     seen = {normalize_for_match(g["url"]) for g in ghosts}
-    for url in extra_urls or []:
-        norm = normalize_for_match(url)
-        if norm in whitelist or norm in seen:
-            continue
-        seen.add(norm)
-        ghosts.append(
-            {
-                "url": url,
-                "clicks": 0,
-                "impressions": 0,
-                "ctr": 0.0,
-                "position": None,
-                "origem": "export-gsc",
-            }
-        )
+    ghosts.extend(_export_gsc_ghosts(extra_urls, whitelist, seen))
 
     ghost_norms = {normalize_for_match(g["url"]) for g in ghosts}
 
@@ -325,49 +382,19 @@ def build_pruning_plan(
     brand = _brand_compact(sitemap_urls)
     home_url = _homepage_url(sitemap_urls) if home_fallback else None
 
-    entries = []
-    for ghost in ghosts:
-        norm = normalize_for_match(ghost["url"])
-        rows = sorted(
-            ghost_queries.get(norm, []),
-            key=lambda r: -r.get("impressions", 0),
+    entries = [
+        _build_ghost_entry(
+            ghost,
+            ghost_queries,
+            active_by_query,
+            active_slug_tokens,
+            whitelist,
+            brand,
+            home_url,
+            min_impressions,
         )
-        top_queries = [r["query"] for r in rows[:TOP_QUERIES_PER_URL]]
-
-        suggestion = _suggest_target_by_query(rows, active_by_query, brand_compact=brand)
-        if suggestion is None:
-            suggestion = _suggest_target_by_slug(ghost["url"], active_slug_tokens)
-
-        # O destino sugerido tem de ser uma URL do sitemap ATUAL (whitelist):
-        # a sugestão por query devolve a forma vista no GSC (que pode diferir
-        # da URL canônica do sitemap em barra final/www/esquema). Mapeia de
-        # volta para a string exata do sitemap — é ela que será aplicada no
-        # redirect, então tem de existir como página ativa.
-        if suggestion is not None:
-            canonical = whitelist.get(normalize_for_match(suggestion[0]))
-            if canonical is not None:
-                suggestion = (canonical, suggestion[1])
-
-        has_traffic = ghost["clicks"] > 0 or ghost["impressions"] >= min_impressions
-
-        # Fallback de ÚLTIMO RECURSO: URL com tráfego ("revisar") que não achou
-        # destino por query/slug recebe a home como sugestão — evita célula de
-        # destino em branco na revisão. Sugestão FRACA (Google trata redirect
-        # em massa p/ home como soft-404): a ação continua "revisar" e a
-        # compilação avisa se muitos virarem 301. Não se aplica a 410 (sem
-        # tráfego não há o que redirecionar).
-        if suggestion is None and has_traffic and home_url:
-            suggestion = (home_url, "home (fallback)")
-
-        entries.append(
-            {
-                **ghost,
-                "action": "revisar" if has_traffic else "410",
-                "top_queries": top_queries,
-                "suggested_target": suggestion[0] if suggestion else None,
-                "target_source": suggestion[1] if suggestion else None,
-            }
-        )
+        for ghost in ghosts
+    ]
 
     entries.sort(key=lambda e: (e["action"] != "revisar", -e["impressions"], e["url"]))
     total_review = sum(1 for e in entries if e["action"] == "revisar")
