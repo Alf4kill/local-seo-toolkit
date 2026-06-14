@@ -138,7 +138,8 @@ def parse_args() -> argparse.Namespace:
         choices=["gsc", "pytrends"],
         default="gsc",
         help="Fonte das tendências: gsc (padrão, first-party, 90 dias) ou "
-        "pytrends (legado, não-oficial, índice global 12 meses).",
+        "pytrends (legado, não-oficial, índice global 12 meses; "
+        "requer 'pip install pytrends').",
     )
     parser.add_argument(
         "--nlp",

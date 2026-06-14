@@ -4,4 +4,10 @@ google-auth-oauthlib==1.3.1
 google-api-python-client==2.194.0
 requests==2.33.1
 openpyxl==3.1.5
-pytrends==4.9.2
+
+# pytrends — OPCIONAL, NÃO instalado por padrão.
+# É a fonte de tendências LEGADA (--trends-source pytrends): biblioteca
+# não-oficial que faz scraping do Google Trends, frágil e sujeita a bloqueio.
+# A fonte PADRÃO (--trends-source gsc) é first-party e não precisa dela.
+# Para usar o modo legado:  pip install pytrends==4.9.2
+# (O código degrada com elegância: se faltar, avisa e segue sem tendências.)
