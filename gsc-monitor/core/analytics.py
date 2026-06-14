@@ -15,7 +15,14 @@ import sys
 from collections import defaultdict
 from urllib.parse import urlparse
 
-from config import CANNIBAL_MAX_POSITION, CANNIBAL_MIN_IMPRESSIONS, HEALTH_WEIGHTS
+from config import (
+    CANNIBAL_MAX_POSITION,
+    CANNIBAL_MIN_IMPRESSIONS,
+    HEALTH_GRADE_BOM,
+    HEALTH_GRADE_EXCELENTE,
+    HEALTH_GRADE_REGULAR,
+    HEALTH_WEIGHTS,
+)
 
 from core.ctr import expected_ctr
 
@@ -194,11 +201,11 @@ def calculate_health_score(
 
     grade = (
         "Excelente"
-        if score >= 80
+        if score >= HEALTH_GRADE_EXCELENTE
         else "Bom"
-        if score >= 60
+        if score >= HEALTH_GRADE_BOM
         else "Regular"
-        if score >= 40
+        if score >= HEALTH_GRADE_REGULAR
         else "Crítico"
     )
 

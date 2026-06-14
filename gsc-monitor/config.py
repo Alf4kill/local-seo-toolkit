@@ -34,6 +34,11 @@ CTR_BENCHMARK = {
 # ---------------------------------------------------------------------------
 HEALTH_WEIGHTS = {"indexation": 0.4, "position": 0.4, "ctr": 0.2}
 
+# Limiares de nota por faixa de score (0–100 → letra). Abaixo de REGULAR: "Crítico".
+HEALTH_GRADE_EXCELENTE = 80  # score >= → "Excelente"
+HEALTH_GRADE_BOM = 60  # score >= → "Bom"
+HEALTH_GRADE_REGULAR = 40  # score >= → "Regular"
+
 # ---------------------------------------------------------------------------
 # Canibalização (core/analytics.py): limiares p/ duas URLs "competirem de fato".
 # Sem eles, qualquer query com 2+ URLs (mesmo uma com 1 impressão na posição 80)
