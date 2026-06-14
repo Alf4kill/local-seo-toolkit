@@ -11,7 +11,7 @@ The repository holds two cooperating tools plus a few project-level notes:
 
 | Path | What it is |
 |------|------------|
-| [`gsc-monitor/`](gsc-monitor/) | Google Search Console analyzer — indexing + ranking reports, health score, cannibalization, content-quality NLP, Excel/HTML/CSV output, Tkinter GUI. |
+| [`gsc-monitor/`](gsc-monitor/) | Google Search Console analyzer — indexing + ranking reports, health score with component alerts, cannibalization + 301 consolidation plan, content-quality NLP, pruning ("Poda") plan, headless batch mode, Excel/HTML/CSV output, Tkinter GUI. |
 | [`semantic-analyzer/`](semantic-analyzer/) | Local embeddings tool that clusters a site's pages by *meaning* to surface duplicate/doorway content, with an optional local-LLM judgment layer and internal-link graph. |
 | [`ESTRATEGIA_TESTES.md`](ESTRATEGIA_TESTES.md) | Test-suite strategy and coverage map for both tools. |
 | [`docs/`](docs/) | Project-wide documentation (this set). |
@@ -70,6 +70,7 @@ For the full setup-from-scratch walkthrough see [`docs/ONBOARDING.md`](docs/ONBO
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Understand how the modules fit together and the key design decisions. |
 | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | Perform a recurring task or recover from a failure (auth, quotas, GPU, cache). |
 | [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) | Look up CLI flags and the public functions of each module. |
+| [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | See what's shipped, what's pending, and the prioritized tech-debt + roadmap backlog. |
 | [`gsc-monitor/README.md`](gsc-monitor/README.md) · [`gsc-monitor/CLAUDE.md`](gsc-monitor/CLAUDE.md) | Tool-specific setup and the deeper design/context log for gsc-monitor. |
 | [`semantic-analyzer/README.md`](semantic-analyzer/README.md) · [`semantic-analyzer/COMANDOS.md`](semantic-analyzer/COMANDOS.md) | Tool-specific overview and the copy-paste command cookbook. |
 | [`ESTRATEGIA_TESTES.md`](ESTRATEGIA_TESTES.md) | Review or extend the test suites. |

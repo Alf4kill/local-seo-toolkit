@@ -111,6 +111,17 @@ URL Inspection is capped at **2,000 calls/day**, so use `--limit` while testing:
 .\.venv\Scripts\python.exe main.py --site www.exemplo.com.br --limit 10
 ```
 
+### Run several sites at once (headless batch)
+
+```powershell
+.\.venv\Scripts\python.exe posicao.py --batch sites.txt --batch-report
+```
+
+One domain per line (`#` for comments; see `sites.example.txt`). Each site gets a
+fresh snapshot and a regenerated dashboard, errors on one don't stop the rest, and
+`--batch-report` writes a cross-site summary CSV. This is the path to schedule for
+weekly snapshots — see [`RUNBOOK.md`](RUNBOOK.md).
+
 ### Cluster a site's content by meaning
 
 ```powershell
@@ -151,13 +162,15 @@ persists it) because Ollama's ROCm doesn't support that card on Windows. See
 Run both test suites. They're fast, fully offline, and spend no API quota.
 
 ```powershell
-cd gsc-monitor        ; py -m pytest        # ~154 tests
-cd ..\semantic-analyzer ; py -m pytest      # ~80 tests
+cd gsc-monitor        ; py -m pytest        # ~309 tests
+cd ..\semantic-analyzer ; py -m pytest      # ~81 tests
 ```
 
 Green suites mean the pure logic and report generators work; a real end-to-end
 check is running one `posicao.py` against a test domain and confirming the
-dashboard appears.
+dashboard appears. CI also enforces a coverage floor (40% gsc-monitor / 38%
+semantic-analyzer), so a change that drops coverage below the baseline fails the
+build.
 
 ## Where things live
 

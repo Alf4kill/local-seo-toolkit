@@ -71,7 +71,7 @@ py posicao.py --batch sites.txt --batch-report
 #   sites.txt: um domínio/linha, # comenta (modelo: sites.example.txt)
 #   --batch-report grava relatorios/_batch/YYYY-MM-DD_resumo.csv
 
-# Testes  (303 testes; rode da pasta gsc-monitor/)
+# Testes  (309 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 
@@ -236,7 +236,7 @@ Auditoria inicial + 3 "Moves". Suíte foi de 82 → **104 testes**, todos passan
 
 ### Caso real — exemplo (foco do usuário)
 Site é **doorway pages**: 295 URLs, **122 grupos de canibalização** (até 8 URLs
-pela mesma keyword, ex.: "cane corso preço"). Indexa e ranqueia, mas **CTR
+pela mesma keyword, ex.: "filhote de cachorro preço"). Indexa e ranqueia, mas **CTR
 catastrófico** (páginas de preço: 11k impressões → 10 cliques). Queda de tráfego
 no fim de março = provável core update. **Recomendação: consolidar as dezenas de
 páginas-permutação em poucas páginas fortes (301)** e medir a recuperação via o

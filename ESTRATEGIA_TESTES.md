@@ -8,6 +8,13 @@ assessments".
 
 Data: 2026-06-06
 
+> **Atualização (2026-06-14):** desde esta passagem a suíte cresceu para
+> **309 (gsc-monitor) + 81 (semantic-analyzer) = 390 testes**, e a CI ganhou um
+> **piso de cobertura** (40% gsc / 38% semantic) além de `pip-audit` + Dependabot.
+> As contagens nas tabelas abaixo refletem o estado de 2026-06-06; o número
+> corrente é 309/81. Veja [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) para
+> o backlog atual de testes e dívida técnica.
+
 ---
 
 ## 1. Resumo executivo
@@ -156,7 +163,7 @@ Princípio para ESTES projetos (cota de API é o gargalo, não RAM):
 
 ```bash
 # gsc-monitor
-cd gsc-monitor && py -m pytest            # 303 testes
+cd gsc-monitor && py -m pytest            # 309 testes
 
 # semantic-analyzer
 cd semantic-analyzer && py -m pytest      # 81 testes

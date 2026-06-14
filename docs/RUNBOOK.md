@@ -28,8 +28,12 @@ consolidation step, a content backup of the site and a matching GSC property.
 
 2. **Read the decomposition, not just the score.** Open the dashboard. A "Good"
    composite can hide a critical component (the classic case: healthy ranking but
-   catastrophic CTR). Check each health-score component and the cannibalization
-   and content-quality sections separately.
+   catastrophic CTR) — any component below 40 raises an explicit alert. Check each
+   health-score component and the cannibalization and content-quality sections
+   separately. When `--queries` finds competing groups, the run also writes a
+   **suggested** 301 consolidation plan (`YYYY-MM-DD_redirects.csv` plus Apache and
+   nginx blocks, the Excel "Plano 301" sheet, and a dashboard section). Review it
+   before applying anything — 301s are hard to reverse.
 
 3. **Build the consolidation plan** from the snapshot:
 
@@ -67,6 +71,79 @@ improved. The measurement loop is built into `gsc-monitor`.
 
 ---
 
+## Procedure: recurring batch snapshots
+
+**When:** you want to feed the measurement loop across many sites without running
+each by hand. **Prerequisite:** `token.json` already generated (run `posicao.py`
+once interactively first so the browser consent flow completes).
+
+1. List the domains in a file, one per line (`#` for comments; copy
+   `sites.example.txt`):
+
+   ```
+   www.exemplo.com.br
+   www.exemplo-b.com.br
+   # www.exemplo-c.com.br   (paused)
+   ```
+
+2. Run the headless batch:
+
+   ```powershell
+   cd gsc-monitor
+   py posicao.py --batch sites.txt --batch-report
+   ```
+
+   Each site gets a fresh snapshot, an appended `historico_posicao.json`, and a
+   regenerated dashboard. An error on one site does **not** abort the rest; a
+   one-line summary prints per site, and `--batch-report` writes
+   `relatorios/_batch/YYYY-MM-DD_resumo.csv`.
+
+3. **Automate weekly** via Windows Task Scheduler so snapshots accumulate without
+   manual runs:
+
+   ```powershell
+   schtasks /Create /TN "GSC Monitor Semanal" /SC WEEKLY /D MON /ST 08:00 ^
+     /TR "cmd /c cd /d E:\projetos\local-seo-toolkit\gsc-monitor && .venv\Scripts\python.exe posicao.py --batch sites.txt --batch-report"
+   ```
+
+   The scheduled run uses the silent token refresh, so no browser window opens.
+
+---
+
+## Procedure: build a pruning plan (old URLs)
+
+**When:** a site has accumulated stale URLs that Google still knows but the
+sitemap no longer lists. **Prerequisite:** the sitemap convention holds (it lists
+every active page).
+
+1. **Generate the editable plan** (stage 1):
+
+   ```powershell
+   py poda.py --site www.exemplo.com.br
+   ```
+
+   Writes `relatorios/www.exemplo.com.br/poda/<today>_poda.csv`. For old URLs with
+   zero impressions the API can't see, add the manual GSC "Pages" export:
+   `--importar-gsc export.csv`.
+
+2. **Review the CSV.** Edit `acao_final` (`410`/`404`/`301`/`manter`) and
+   `destino_final`. No-traffic ghosts default to `410`; ghosts with traffic are
+   marked `revisar` — *you* decide, never the tool. The CSV is `;`-delimited with
+   comma decimals so it opens in columns in pt-BR Excel.
+
+3. **Compile** the reviewed CSV into redirect blocks (stage 2):
+
+   ```powershell
+   py poda.py --site www.exemplo.com.br --compilar
+   ```
+
+   Produces four formats in the `poda/` subfolder: anchored Apache `RedirectMatch`,
+   simple `mod_alias` `Redirect 301`, nginx `server {}`, and a standalone PHP file.
+   The compiler warns if too many URLs redirect to the home (Google treats mass
+   home redirects as soft-404). Or use the dedicated GUI: `py app_poda.py`.
+
+---
+
 ## Procedure: run the local LLM layer
 
 **When:** you want `--llm` (judge groups) or `--differentiate` (contract-safe
@@ -81,7 +158,7 @@ plan). **Prerequisite:** a running local LLM server.
    py analisar.py --primeweb "E:\projetos\backup\exemplo" `
      --gsc "E:\projetos\local-seo-toolkit\gsc-monitor\relatorios\www.exemplo.com" `
      --llm --llm-model qwen2.5:7b-instruct `
-     --site-context "Canil de Cane Corso e Rottweiler" --html plano.html
+     --site-context "Canil de cães de raça" --html plano.html
    ```
 
 4. To free VRAM immediately when done instead of waiting ~5 min, add
@@ -119,13 +196,16 @@ The real bottleneck. Symptoms are quota/429 errors from Google.
 
 ## Failure: `pytrends` / `--trends` breaks
 
-`pytrends` is unofficial and rate-limited; breakage is expected.
+`--trends` now defaults to the first-party GSC `date` dimension, which is official
+and not rate-limited — prefer it. The legacy `pytrends` path is the only fragile
+one.
 
 - Treat `--trends` as fully optional — drop the flag and the rest of the report
   still works.
-- If it's flaky, wait out the rate limit or skip it. The recommended long-term
-  fix is a first-party trend from the GSC `date` dimension (see
-  `gsc-monitor/CLAUDE.md` → next steps).
+- Only `--trends-source pytrends` hits the unofficial, rate-limited endpoint. If
+  it's flaky, wait out the rate limit, drop back to the default `gsc` source, or
+  skip trends entirely. `pytrends` is not installed by default
+  (`pip install pytrends` to use the legacy path).
 
 ---
 

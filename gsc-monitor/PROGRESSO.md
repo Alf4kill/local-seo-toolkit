@@ -295,7 +295,7 @@ de lembrar de rodar manualmente.
 - Sheet "Plano 301" no Excel + seção 🔀 no dashboard (escapada, degrada bem).
 - Parâmetros propagados aos DOIS call sites (`posicao.py` e `gui/runner.py`).
 
-**Por quê:** a recomendação de consolidar a canilmansur (122 grupos) existia
+**Por quê:** a recomendação de consolidar o site exemplo (122 grupos) existia
 só como diagnóstico. Com o artefato executável, a intervenção do experimento
 antes/depois (P12) pode ser aplicada em produção diretamente.
 
@@ -323,7 +323,7 @@ do projeto (detectar over-optimization de verdade).
   piso de 4 ocorrências, bordas não podem ser stopword, acentos agrupados.
 - Novo campo `density_source` (`query`/`slug`/`ngram`); empates priorizam
   query > slug > n-grama. As **reasons citam o gatilho**:
-  `Gatilho: "cane corso preco" (slug da URL, 12.4%)`.
+  `Gatilho: "produto a preco" (slug da URL, 12.4%)`.
 - `analyze_content_quality` ganhou parâmetro opcional `url` (retrocompatível);
   `content_fetcher` repassa a URL analisada.
 - Excel: coluna "Keyword-alvo" → "Keyword gatilho (fonte)". Dashboard: linha de
@@ -345,7 +345,7 @@ comportamento antigo de 0% era exatamente o bug corrigido).
 `tests/test_analytics_phase4.py`, `README.md`, `CLAUDE.md`
 
 **Problema (honestidade analítica):** o score composto mascara componente
-crítico — caso real: canilmansur 70.7 "Bom" com CTR 8.7/100. O número único
+crítico — caso real: site exemplo 70.7 "Bom" com CTR 8.7/100. O número único
 escondia exatamente o problema que importava.
 
 **Mudanças:**
@@ -362,7 +362,7 @@ escondia exatamente o problema que importava.
   dinamicamente) e dashboard (caixa vermelha na seção 🏥 Saúde).
 
 **Testes:** +6 — composto "Excelente" com CTR crítico DEVE alertar (o caso
-canilmansur sintético); tudo-bom NÃO alerta; indexação None não vira alerta;
+exemplo sintético); tudo-bom NÃO alerta; indexação None não vira alerta;
 severidades; mensagens citam o valor. `test_estrutura_retorno` atualizado.
 `py -m unittest discover` → **162 testes OK**
 
@@ -408,7 +408,7 @@ mockado, corpos das 2 chamadas, cache hit evita API, chart line vs bar.
 ### Bugfix — NENHUM gráfico do dashboard renderizava no navegador ✅ (2026-06-10)
 **Arquivo modificado:** `reporters/html_reporter.py` (+2 testes em `tests/test_date_trends.py`)
 
-**Sintoma (reportado no dashboard real da canilmansur):** seções "Histórico de
+**Sintoma (reportado no dashboard real do site exemplo):** seções "Histórico de
 Posicionamento" e "Tendências" com a área do gráfico vazia — na verdade,
 **todos** os 4 gráficos (posição, indexação, histórico, trends) nunca
 renderizaram em nenhum navegador, desde a Fase 6.

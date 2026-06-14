@@ -48,7 +48,7 @@ py analisar.py --primeweb "E:\projetos\backup\exemplo" --html clusters.html
 # 3) Plano de consolidação completo (grupos + qual MANTER por GSC + veredito do LLM)
 py analisar.py --primeweb "E:\projetos\backup\exemplo" `
   --gsc "E:\projetos\local-seo-toolkit\gsc-monitor\relatorios\www.exemplo.com" `
-  --llm --site-context "Canil que vende filhotes de Cane Corso e Rottweiler" `
+  --llm --site-context "Canil que vende filhotes de cães de raça" `
   --html plano.html
 ```
 
@@ -101,7 +101,7 @@ py analisar.py --primeweb "E:\projetos\backup\exemplo" `
 | `--llm-model` | `qwen2.5:7b-instruct` | nome | Modelo do servidor (ou id HuggingFace no `transformers`). |
 | `--llm-max` | `8` | int | Quantos grupos julgar (prioriza por impressões em disputa). |
 | `--llm-unload` | (desligado) | flag | Ao terminar o LLM, **descarrega o modelo da memória na hora** (Ollama keep_alive=0) em vez de esperar ~5 min. Libera VRAM/RAM. No-op em LM Studio. |
-| `--site-context` | — | texto | 1 linha sobre o nicho — melhora muito as lacunas. Ex.: `"Canil que vende filhotes de Cane Corso e Rottweiler"`. |
+| `--site-context` | — | texto | 1 linha sobre o nicho — melhora muito as lacunas. Ex.: `"Canil que vende filhotes de cães de raça"`. |
 
 ### Grafo de links internos
 
@@ -154,7 +154,7 @@ py analisar.py --primeweb "E:\projetos\backup\exemplo" `
 py analisar.py --primeweb "E:\projetos\backup\exemplo" `
   --gsc "E:\projetos\local-seo-toolkit\gsc-monitor\relatorios\www.exemplo.com" `
   --differentiate --llm-max 5 `
-  --site-context "Canil de Cane Corso e Rottweiler" --html plano_diff.html
+  --site-context "Canil de cães de raça" --html plano_diff.html
 ```
 Para cada página do grupo, sugere uma intenção/keyword/título distintos (uma vira **CABEÇA/hub**, as outras **spokes**) p/ pararem de competir — sem apagar nenhuma. Páginas sem ângulo distinto possível são marcadas como candidatas a `rel=canonical` (não 301). Como a diferenciação roda um grupo por vez, ela **detecta automaticamente colisões de keyword entre grupos** (seção "⚠ Colisões de keyword" no console e no HTML): a página de maior tráfego mantém a keyword, as outras precisam de uma distinta. É um RASCUNHO p/ o analista revisar; combine com `--llm` p/ ter veredito + plano juntos.
 
@@ -171,19 +171,19 @@ Combine com `--differentiate` para o plano de links usar a **cabeça/spokes** e 
 py analisar.py --primeweb "E:\projetos\backup\exemplo" `
   --gsc "E:\projetos\local-seo-toolkit\gsc-monitor\relatorios\www.exemplo.com" `
   --differentiate --linkgraph --llm-max 5 `
-  --site-context "Canil de Cane Corso e Rottweiler" --html plano_full.html
+  --site-context "Canil de cães de raça" --html plano_full.html
 ```
 Caso real (exemplo): **13 com link contextual, 273 só índice/widget, 0 órfãs de fato** — as
 doorway pages são alcançadas pelo índice `blog.php`, mas **não recebem link editorial/contextual**
-(o que de fato passa autoridade). As money-pages de maior tráfego (`preco-do-cane-corso-filhote`
-11k impr, `cane-corso-preco` 5,9k impr) têm **0 link contextual de entrada** — é o que o plano
+(o que de fato passa autoridade). As money-pages de maior tráfego (`preco-do-produto-a`
+11k impr, `produto-a-preco` 5,9k impr) têm **0 link contextual de entrada** — é o que o plano
 hub-and-spoke resolve.
 
 **Hybrid completo, julgando só os 3 maiores grupos** (rápido):
 ```powershell
 py analisar.py --primeweb "E:\projetos\backup\exemplo" `
   --gsc "E:\projetos\local-seo-toolkit\gsc-monitor\relatorios\www.exemplo.com" `
-  --llm --llm-max 3 --site-context "Canil de Cane Corso e Rottweiler" --html plano.html
+  --llm --llm-max 3 --site-context "Canil de cães de raça" --html plano.html
 ```
 
 **LLM em CPU, sem servidor** (só p/ testar — lento, modelo pequeno):
@@ -247,7 +247,7 @@ Os dois cabem 100% na GPU de 12 GB (com `OLLAMA_CONTEXT_LENGTH=8192`):
 py analisar.py --primeweb "E:\projetos\backup\exemplo" `
   --gsc "E:\projetos\local-seo-toolkit\gsc-monitor\relatorios\www.exemplo.com" `
   --llm --llm-model qwen2.5:14b-instruct `
-  --site-context "Canil de Cane Corso e Rottweiler" --html plano_14b.html
+  --site-context "Canil de cães de raça" --html plano_14b.html
 ```
 
 > **Por que contexto 8192 e não 16384?** Os prompts deste analisador têm ~4k tokens.

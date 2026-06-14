@@ -16,17 +16,22 @@ module. Signatures are taken directly from the source; private helpers (leading
 ### `posicao.py` — ranking report
 
 ```
-py posicao.py --site <domain> [flags]
+py posicao.py (--site <domain> | --batch <file>) [flags]
 ```
+
+Provide either a single `--site` or a `--batch` file (not both).
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `--site` | required | Domain to analyze. Accepts `exemplo.com.br` or `sc-domain:exemplo.com.br` for a Domain Property. |
-| `--excel` | flag | Generate the `.xlsx` workbook (position bands + CTR opportunities). |
+| `--site` | str | Domain to analyze. Accepts `exemplo.com.br` or `sc-domain:exemplo.com.br` for a Domain Property. |
+| `--batch FILE` | str | Headless batch mode: a file with one domain per line (`#` starts a comment). Runs the standard pipeline (positions + queries + content) for each site without aborting on errors. |
+| `--batch-report` | flag | With `--batch`: write a consolidated summary to `relatorios/_batch/YYYY-MM-DD_resumo.csv`. |
+| `--excel` | flag | Generate the `.xlsx` workbook (position bands, CTR opportunities, cannibalization, content quality, 301 plan…). |
 | `--csv` | flag | Save the ranking report as `.csv`. |
 | `--txt` | flag | Save a human-readable `.txt` alongside the JSON. |
-| `--queries` | flag | Analyze keyword cannibalization (fetches query+page data). |
-| `--trends` | flag | Google Trends for the top 10 keywords (requires `pytrends`). |
+| `--queries` | flag | Analyze keyword cannibalization (fetches query+page data). Also triggers the 301 consolidation plan when competing groups exist. |
+| `--trends` | flag | Demand trends. Default source is the GSC `date` dimension (first-party, 90 days, site-specific). |
+| `--trends-source` | `gsc`\|`pytrends` | Trend source. `gsc` (default, first-party) or `pytrends` (legacy, unofficial global index; requires `pip install pytrends`). |
 | `--nlp` | flag | Entity/category NLP on opportunity pages via `annotateText` (**uses API quota**). |
 | `--content` | flag | Content-quality verdict (over-optimization / thin content). Local signals, no quota; enriched by `--nlp`. |
 | `--no-cache` | flag | Ignore cache and force fresh API calls. |
@@ -47,7 +52,29 @@ py main.py --site <domain> [flags]
 | `--csv` | flag | Save the indexing report as `.csv`. |
 | `--no-cache` | flag | Ignore cache and force fresh API calls (uses quota). |
 
-### `app.py` — GUI
+### `poda.py` — pruning plan (old URLs outside the sitemap)
+
+Two-stage CLI. Stage 1 generates an editable CSV of "ghost" URLs (known to
+Google, absent from the sitemap); the analyst reviews it; stage 2 compiles the
+reviewed CSV into redirect blocks. See the
+[pruning concept](ARCHITECTURE.md#pruning-plan-poda) for the rationale.
+
+```
+py poda.py --site <domain> [flags]            # stage 1 — generate {date}_poda.csv
+py poda.py --site <domain> --compilar [CSV]   # stage 2 — compile reviewed CSV
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--site` | required | Domain to analyze. |
+| `--compilar [CSV]` | str? | Stage 2: compile the reviewed CSV into Apache/nginx/PHP blocks. With no value, uses the newest `*_poda.csv` for the domain. |
+| `--min-impressoes N` | int | Impressions floor to mark a URL `revisar` instead of `410` (default from `config.PODA_MIN_IMPRESSIONS`). |
+| `--dias N` | int | Search Analytics look-back window in days (default ≈ 480 ≈ 16 months, the GSC maximum). |
+| `--importar-gsc FILE…` | str+ | One or more files/folders with the GSC "Pages" report export (csv/txt/xlsx) — covers old URLs with zero impressions the API can't see. |
+| `--sem-fallback-home` | flag | Disable the home-page fallback: `revisar` URLs with no query/slug target keep `destino_final` blank instead of suggesting the home as a last resort. |
+| `--no-cache` | flag | Ignore cache and force fresh API calls. |
+
+### `app.py` — GUI (ranking / indexing)
 
 ```
 py app.py
@@ -56,14 +83,38 @@ py app.py
 No arguments. Opens a Tkinter window that drives the same indexing/ranking code
 on a background thread, with live output and a button to open the report folder.
 
+### `app_poda.py` — GUI (pruning plan)
+
+```
+py app_poda.py
+```
+
+No arguments. A dedicated two-step window for the pruning plan: generate the
+editable CSV, review it, then compile the redirect blocks.
+
 ---
 
 ## gsc-monitor modules
 
 ### `config.py`
 
-`BASE_DIR` — absolute path to the `gsc-monitor/` directory, used to anchor all
-file paths.
+Centralized constants and paths: `BASE_DIR`, `CTR_BENCHMARK` (expected CTR per
+position), `HEALTH_WEIGHTS`, the health grade thresholds
+(`HEALTH_GRADE_EXCELENTE/BOM/REGULAR`), cannibalization/day-window constants, and
+the pruning defaults (`PODA_MIN_IMPRESSIONS`, `PODA_DAYS_BACK`).
+
+### `core/urls.py`
+
+| Function | Purpose |
+|----------|---------|
+| `normalize_domain(site) -> str` | Canonicalize a domain so `https://x/` and `sc-domain:x` produce the same cache key. Single source of truth, imported by `posicao.py` and `position_fetcher.py`. |
+| `build_site_url(domain) -> str` | Build the Search Console property URL from a domain. |
+
+### `core/ctr.py`
+
+| Function | Purpose |
+|----------|---------|
+| `expected_ctr(position) -> float \| None` | Interpolated benchmark CTR for a given average position (from `config.CTR_BENCHMARK`); `None` beyond the table. |
 
 ### `core/auth.py`
 
@@ -87,29 +138,62 @@ file paths.
 
 | Function | Purpose |
 |----------|---------|
-| `calculate_health_score(...) -> dict` | Composite 0–100 score (indexing×0.4 + position×0.4 + ctr×0.2), impression-weighted, re-normalized when indexing is absent. |
-| `print_health_score(health)` | Print the score and its decomposition. |
+| `calculate_health_score(...) -> dict` | Composite 0–100 score (indexing×0.4 + position×0.4 + ctr×0.2), impression-weighted, re-normalized when indexing is absent. Returns `component_alerts`. |
+| `build_component_alerts(components) -> list` | Per-component alerts when a component falls below 40 (`critico` < 20, `alto` < 40), each with a plain-language pt-BR message. The composite is never suppressed. |
+| `print_health_score(health)` | Print the score, its decomposition, and any component alerts. |
 | `detect_orphan_pages(position_report) -> list` | Pages with no impressions (note: historically mislabeled "orphans"). |
 | `print_orphan_pages(orphans, max_display=20)` | Print pages with no impressions. |
 | `detect_cannibalization(query_rows) -> list` | Groups of URLs genuinely competing (impressions ≥ 10, position ≤ 30) with a `severity` field. |
 | `print_cannibalization(cannibalization, max_display=10)` | Print cannibalization groups. |
+| `build_consolidation_plan(cannibalization) -> dict` | Turn cannibalization into a **suggested** 301 plan: pick the canonical URL (clicks → position → impressions) and list the others as redirect sources; resolve cross-group conflicts by severity. |
+| `print_consolidation_plan(plan, max_display=10)` | Print the 301 plan (always labeled a suggestion). |
+| `compute_date_trends(date_data, top_n=10, metric="impressions") -> dict` | Pure function: classify site and per-query demand trend (first-third vs last-third of daily impressions → rising/stable/declining). |
 
 ### `core/content_quality.py`
 
 | Function | Purpose |
 |----------|---------|
 | `keyword_density(text, keyword) -> tuple` | Density of a keyword in the text. |
+| `slug_phrase(url) -> str \| None` | Convert a URL slug to a phrase (split on `-`/`_`, drop pt-BR stopwords, accent-insensitive) for density measurement. |
+| `dominant_ngram(text, min_count=…) -> tuple \| None` | The most-repeated 2–3-word n-gram in the page text (floor of repetitions, non-stopword borders). |
 | `vocab_diversity(text) -> float` | Lexical diversity signal. |
 | `salience_concentration(nlp_result) -> float \| None` | How concentrated entity salience is (NLP signal). |
 | `target_keywords_for_url(...)` | Derive a page's target keyword(s) from its real GSC queries. |
-| `analyze_content_quality(...) -> dict` | Conservative verdict: `ok` / `atencao` / `over_otimizado` / `raso`. |
+| `analyze_content_quality(...) -> dict` | Conservative verdict: `ok` / `atencao` / `over_otimizado` / `raso`. Density is the max of GSC-query / slug-phrase / dominant-n-gram; `density_source` records the trigger. |
 | `print_content_quality(url, cq)` | Print the per-URL verdict. |
 | `build_content_tracking(historico) -> dict` | Cross-reference content metrics × position over snapshots (the measurement loop). |
 | `print_content_tracking(tracking)` | Print the tracking table. |
 
+### `core/pruning.py`
+
+The pruning ("Poda") engine: diff GSC pages against the sitemap, suggest actions,
+and compile redirect blocks. All outputs are clearly marked suggestions.
+
+| Function | Purpose |
+|----------|---------|
+| `find_ghost_urls(api_pages, sitemap_urls) -> list` | URLs Google knows but the sitemap omits (the pruning candidates). |
+| `build_pruning_plan(...) -> dict` | Build the editable plan: `410` for no-traffic ghosts, `revisar` for ghosts with traffic, with a suggested 301 target (shared query → similar slug → optional home fallback), always canonicalized to a live sitemap URL. |
+| `parse_plan_csv(lines) -> dict` | Parse the analyst-reviewed CSV (`;`-delimited, comma decimals). |
+| `build_poda_htaccess(entries, date) -> str` | Apache `.htaccess` block (anchored `RedirectMatch`). |
+| `build_poda_redirect(entries, date) -> str` | Apache `mod_alias` `Redirect 301` block (simple, prefix-match). |
+| `build_poda_nginx(entries, date) -> str` | nginx `server {}` block. |
+| `build_poda_php(entries, date, filename=…) -> str` | Standalone PHP redirect file for hosts where the server config can't be edited. |
+| `print_pruning_plan(plan, max_display=10)` | Print the plan summary. |
+| `normalize_for_match(url) -> str` | Normalize a URL (www/https/trailing-slash/percent-encoding) for diffing. |
+
+### `core/batch.py`
+
+| Function | Purpose |
+|----------|---------|
+| `parse_sites_file(path) -> list` | Read a batch file (one domain per line, `#` comments). |
+| `run_batch(sites, pipeline_fn) -> list` | Run `pipeline_fn` per site, isolating errors so one failure doesn't abort the batch. |
+| `format_site_summary(result) -> str` | One-line per-site summary (health + grade + snapshot count). |
+| `write_batch_report(results, date) -> str` | Write `relatorios/_batch/YYYY-MM-DD_resumo.csv`. |
+
 ### `core/cache.py`
 
 Per-domain JSON cache in `relatorios/<site>/.cache/`. API errors are never cached.
+Cache TTL timestamps are UTC-aware (backward-compatible with older naive caches).
 
 | Function | Purpose |
 |----------|---------|
@@ -140,8 +224,9 @@ All report/snapshot file IO. Selected public functions:
 
 | Module · function | Purpose |
 |-------------------|---------|
-| `position_fetcher.fetch_positions(...)` | Pull per-page Search Analytics data. |
+| `position_fetcher.fetch_positions(...)` | Pull per-page Search Analytics data; also returns `ghost_rows` (pages with GSC data absent from the sitemap) used by the pruning plan. |
 | `position_fetcher.fetch_query_positions(...)` | Pull query+page data (for cannibalization). |
+| `position_fetcher.fetch_date_trends(...)` | Pull the `date` and `date+query` series for first-party demand trends (90 days, 24h cache). |
 | `inspector.inspect_urls(...)` | URL Inspection API (indexing status). |
 | `knowledge_graph.search_entity(...)` | Knowledge Graph Search with false-positive guard. |
 | `knowledge_graph.load_api_key()` / `save_api_key(key)` / `brand_from_domain(domain)` | API-key handling and brand inference. |
@@ -149,7 +234,7 @@ All report/snapshot file IO. Selected public functions:
 | `nlp_analyzer.analyze_page_nlp(url, api_key) -> dict` | Cloud NL `annotateText` on one page. |
 | `nlp_analyzer.analyze_opportunity_urls(...)` | NLP across opportunity pages. |
 | `nlp_analyzer.print_nlp_results(nlp_results)` | Print NLP output. |
-| `trends_fetcher.fetch_trends(...)` | Google Trends via `pytrends` (fragile, optional). |
+| `trends_fetcher.fetch_trends(...)` | Legacy Google Trends via `pytrends` (fragile, optional — only `--trends-source pytrends`). |
 | `trends_fetcher.top_keywords_from_queries(query_rows, max_kw=10)` | Pick keywords to send to Trends. |
 | `trends_fetcher.print_trends(trends_data)` | Print trend classifications. |
 | `content_fetcher.fetch_page_text_cached(site, url, use_cache=True) -> str \| None` | Fetch page text (72h text cache). |
@@ -165,11 +250,12 @@ All report/snapshot file IO. Selected public functions:
 | `reporter.build_detailed(site, date, url_results) -> dict` | Build detailed indexing report. |
 | `reporter.build_consolidated(site, date, url_results) -> dict` | Build consolidated indexing report. |
 | `reporter.print_consolidated` / `print_detailed` | Print indexing reports. |
-| `excel_reporter.generate_excel(...)` | Build the multi-sheet workbook (Summary, Positioning, CTR Opportunities, History, Trends, Cannibalization, No-Impressions, Content Quality). |
+| `excel_reporter.generate_excel(...)` | Build the multi-sheet workbook (Resumo, Posicionamento, Oportunidades CTR, Histórico, Trends, Canibalização, Plano 301, Sem Impressões, Qualidade Conteúdo). |
 | `html_reporter.generate_dashboard(...)` | Build the Chart.js dashboard; each section appears only if its data exists. |
 
-> When adding a parameter to `generate_dashboard` or `generate_excel`, propagate
-> it through **both** `posicao.py` and `gui/runner.py`.
+> When adding a report toggle, add it to the `ReportOptions` dataclass in
+> `posicao.py` — the single source of truth threaded through both the CLI
+> (`run_pipeline`) and the GUI (`gui/runner.py`), so the two can't drift.
 
 ---
 
@@ -181,7 +267,8 @@ All report/snapshot file IO. Selected public functions:
 py analisar.py (--primeweb DIR | --folder DIR | --urls FILE) [flags]
 ```
 
-Exactly one source is required.
+Exactly one source is required. `run_analysis(args)` is the public pipeline
+entry point that both the CLI and the GUI call.
 
 **Source (pick one):**
 
@@ -238,6 +325,17 @@ Exactly one source is required.
 | Flag | Value | Description |
 |------|-------|-------------|
 | `--html` | FILE | Save the HTML report (includes GSC, LLM verdicts, differentiation plan, and link graph when present). Defaults to an auto-named file under `relatorios/<site>/`. |
+
+### `app.py` — GUI
+
+```
+py app.py
+```
+
+No arguments. Opens the same integrated window as gsc-monitor (live terminal
+output, "open folder" / "open report" buttons) and calls `analisar.run_analysis`
+directly — the GUI runs the exact CLI pipeline, including the GSC cross-reference,
+LLM judgment, differentiation, and link graph.
 
 ---
 
