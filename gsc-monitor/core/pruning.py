@@ -456,6 +456,40 @@ PLAN_CSV_COLUMNS = [
 ]
 
 
+def _classify_plan_row(row: dict, line_no: int) -> tuple:
+    """Classifica uma linha do CSV do plano. Retorna (bucket, valor):
+    ('error', msg) | ('pending', url) | ('kept', url) | ('entry', (entry, is_home_301)).
+    """
+    url = (row.get("url") or "").strip()
+    if not url:
+        return "error", f"linha {line_no}: coluna 'url' vazia — ignorada"
+
+    action = (row.get("acao_final") or "").strip().lower() or "revisar"
+    if action not in _VALID_ACTIONS:
+        return "error", f"linha {line_no}: acao_final invalida '{action}' ({url}) — ignorada"
+
+    if action == "revisar":
+        return "pending", url
+    if action == "manter":
+        return "kept", url
+
+    target = (row.get("destino_final") or "").strip() or None
+    is_home = False
+    if action == "301":
+        if not target or not target.lower().startswith(("http://", "https://")):
+            return (
+                "error",
+                f"linha {line_no}: 301 sem destino_final absoluto valido ({url}) — ignorada",
+            )
+        if normalize_for_match(target) == normalize_for_match(url):
+            return "error", f"linha {line_no}: 301 com destino igual a origem ({url}) — ignorada"
+        is_home = _is_homepage(target)
+    else:
+        target = None  # 410/404 não têm destino
+
+    return "entry", ({"url": url, "action": action, "target": target}, is_home)
+
+
 def parse_plan_csv(lines) -> dict:
     """
     Lê o CSV do plano (revisado ou não pelo analista) e valida as decisões.
@@ -489,42 +523,17 @@ def parse_plan_csv(lines) -> dict:
     reader = csv.DictReader(content, delimiter=delimiter)
 
     entries, pending, kept, errors, warnings = [], [], [], [], []
+    buckets = {"error": errors, "pending": pending, "kept": kept}
     homepage_targets = 0
 
     for i, row in enumerate(reader, start=2):  # 2 = primeira linha de dados
-        url = (row.get("url") or "").strip()
-        if not url:
-            errors.append(f"linha {i}: coluna 'url' vazia — ignorada")
-            continue
-
-        action = (row.get("acao_final") or "").strip().lower() or "revisar"
-        if action not in _VALID_ACTIONS:
-            errors.append(f"linha {i}: acao_final invalida '{action}' ({url}) — ignorada")
-            continue
-
-        if action == "revisar":
-            pending.append(url)
-            continue
-        if action == "manter":
-            kept.append(url)
-            continue
-
-        target = (row.get("destino_final") or "").strip() or None
-        if action == "301":
-            if not target or not target.lower().startswith(("http://", "https://")):
-                errors.append(
-                    f"linha {i}: 301 sem destino_final absoluto valido ({url}) — ignorada"
-                )
-                continue
-            if normalize_for_match(target) == normalize_for_match(url):
-                errors.append(f"linha {i}: 301 com destino igual a origem ({url}) — ignorada")
-                continue
-            if _is_homepage(target):
-                homepage_targets += 1
+        kind, value = _classify_plan_row(row, i)
+        if kind == "entry":
+            entry, is_home = value
+            entries.append(entry)
+            homepage_targets += is_home
         else:
-            target = None  # 410/404 não têm destino
-
-        entries.append({"url": url, "action": action, "target": target})
+            buckets[kind].append(value)
 
     if homepage_targets > HOMEPAGE_WARN_THRESHOLD:
         warnings.append(
