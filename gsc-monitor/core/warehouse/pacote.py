@@ -5,12 +5,34 @@ O acervo extrai; a ANÁLISE acontece depois, numa sessão separada, com o projet
 do site em mãos. Este módulo produz o que atravessa essa fronteira:
 
     relatorios/{dominio}/acervo/pacote/
-        acervo.sqlite3   snapshot consistente (Connection.backup())
-        DADOS.md         o entregável de primeira classe
+        acervo.sqlite3   snapshot consistente (Connection.backup()) do banco INTEIRO
         eventos.csv      a timeline, para uso de máquina
         evento_urls.csv  uma linha por (evento, URL informada, casou ou não)
-        consultas.sql    ~9 consultas prontas — boilerplate de SQL, NÃO análise
         extras/LEIA.md   onde largar exports manuais da UI do GSC
+        web/
+            DADOS.md      o entregável de primeira classe, do `type` web
+            consultas.sql ~9 consultas prontas — boilerplate de SQL, NÃO análise
+        image/
+            DADOS.md      a mesma escrituração para image, sem tocar na de web
+            consultas.sql
+
+UM snapshot, UM conjunto de documentos POR `type`. A divisão não é estética: o
+snapshot é `Connection.backup()` do banco inteiro, então ele já contém todos os
+tipos coletados e é byte a byte o mesmo qualquer que seja o `--tipo` — num site
+real, 439 MB que seria absurdo duplicar. Os documentos, ao contrário, são de UM
+tipo: as seções 1 e 3 a 7 do `DADOS.md` contam, medem e datam só `dados['tipo']`,
+e o `consultas.sql` sai com o `WHERE tipo = ...` daquele recorte.
+
+Entre `pacote/{tipo}/DADOS.md` e `pacote/DADOS-{tipo}.md`, a subpasta ganhou por
+três motivos: (1) os nomes de dentro continuam fixos — `DADOS.md` e
+`consultas.sql` são o que o README, a CLI e qualquer caminho anotado numa sessão
+de análise já conhecem, e um prefixo de pasta é menos quebra que um nome novo por
+tipo; (2) a POSIÇÃO do arquivo passa a dizer o que ele cobre — o snapshot e a
+timeline ficam fora das subpastas porque são do acervo inteiro, e num diretório
+plano nada distinguiria `acervo.sqlite3` de "o arquivo do web"; (3) o isolamento
+deixa de depender de convenção de nome: gerar o pacote de um tipo escreve dentro
+de `pacote/{tipo}/`, e não há glob nem limpeza que possa alcançar o documento de
+outro tipo.
 
 `DADOS.md` existe para impedir conclusão errada, e isso é mais específico do que
 "documentar o banco". Três leituras erradas que o dado real de fato produziu, e
@@ -34,13 +56,22 @@ proveniência e SQL de boilerplate.
 
 import os
 import sqlite3
-from datetime import date
+from datetime import UTC, date, datetime
 
 from core.warehouse import plan, store
 
-# Nome fixo dentro do pacote: `consultas.sql` e qualquer caminho que a sessão de
-# análise anote continuam valendo entre gerações do pacote.
+# Nomes fixos dentro do pacote: `consultas.sql` e qualquer caminho que a sessão
+# de análise anote continuam valendo entre gerações do pacote. O que varia por
+# `type` é a PASTA (`pacote/{tipo}/`), nunca o nome do arquivo.
 NOME_SNAPSHOT = "acervo.sqlite3"
+NOME_DADOS = "DADOS.md"
+NOME_CONSULTAS = "consultas.sql"
+
+# Os arquivos que ficam na RAIZ do pacote porque são do acervo inteiro, não de um
+# `type`: o snapshot (cópia do banco todo) e a timeline de eventos (a tabela
+# `evento` não tem coluna `tipo` — o que foi editado no site foi editado para
+# todas as superfícies de busca).
+NOMES_COMPARTILHADOS = (NOME_SNAPSHOT, "eventos.csv", "evento_urls.csv")
 
 # O que o snapshot `--reduzido` deixa de fora. `fato_query_pagina` é mais da
 # metade do volume (no site-piloto: 161 MB inteiros contra ~70 MB sem ela) e é
@@ -296,6 +327,30 @@ ORDER BY e.data, e.id
 )
 
 
+# As consultas acima estão escritas para `web`, que é o default. O filtro de
+# tipo aparece SEMPRE nesta forma literal, e `_FILTRO_TIPO_TESTE` existe para o
+# teste travar isso: se alguém escrever `tipo='image'` sem espaços numa consulta
+# nova, a troca abaixo passaria batido e o pacote de `image` sairia com SQL de
+# `web` — exatamente o erro silencioso que a subpasta por tipo veio evitar.
+_FILTRO_TIPO = "tipo = 'web'"
+_FILTRO_TIPO_TESTE = "tipo ="
+
+
+def consultas_do_tipo(tipo: str) -> tuple:
+    """CONSULTAS com o filtro de `type` trocado pelo tipo deste pacote.
+
+    Sem isto, `pacote --tipo image` entregaria um `consultas.sql` que consulta
+    `web`: o analista rodaria a consulta como está, veria número de outra
+    superfície de busca e não teria como perceber.
+    """
+    if tipo == "web":
+        return CONSULTAS
+    return tuple(
+        (slug, titulo, explicacao, sql.replace(_FILTRO_TIPO, f"tipo = '{tipo}'"))
+        for slug, titulo, explicacao, sql in CONSULTAS
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers de formatação
 # ---------------------------------------------------------------------------
@@ -355,6 +410,17 @@ def _milhar(n: int) -> str:
 
 def _tamanho_mb(caminho: str) -> float:
     return os.path.getsize(caminho) / 1_048_576 if os.path.exists(caminho) else 0.0
+
+
+def _quando(caminho: str) -> str:
+    """Quando o arquivo foi escrito, em UTC e com minuto.
+
+    Com minuto, e nao so a data: regerar os documentos duas vezes no mesmo dia e
+    o caso normal, e "o snapshot e de hoje" nao diria se ele e de antes ou de
+    depois da ultima ingestao.
+    """
+    quando = datetime.fromtimestamp(os.path.getmtime(caminho), tz=UTC)
+    return quando.strftime("%Y-%m-%dT%H:%MZ")
 
 
 # ---------------------------------------------------------------------------
@@ -467,21 +533,51 @@ def _nota_grao(dados: dict, grao: str) -> str:
 
 
 def _secao_arquivos(dados: dict, arquivos: dict, extras: list) -> list:
+    """A seção 2 explica o LAYOUT, não só lista nomes.
+
+    O pacote tem dois andares — raiz compartilhada e uma subpasta por `type` —, e
+    é dessa forma que a análise deduz o que é do acervo inteiro e o que é deste
+    recorte. Um documento que listasse `acervo.sqlite3` como se estivesse ao lado
+    dele estaria mandando o analista para um caminho que não existe.
+    """
     reduzido = arquivos.get("reduzido")
+    tipo = dados["tipo"]
+    # O exemplo de pasta irmã tem de ser de OUTRO tipo: dizer a um documento de
+    # `image` que a pasta irmã seria `image/` não ensina nada.
+    outro = (dados.get("outros_tipos") or [t for t in plan.TIPOS_VALIDOS if t != tipo])[0]
     linhas = [
         "## 2. Arquivos deste pacote",
         "",
+        f"Este documento está em `pacote/{tipo}/`. **A raiz do pacote é compartilhada "
+        f"por todos os `type`; a subpasta é o que é só de `{tipo}`.**",
+        "",
         "| arquivo | o que é |",
         "|---|---|",
-        f"| `{NOME_SNAPSHOT}` | snapshot do acervo "
-        f"({arquivos.get('snapshot_mb', 0):.1f} MB) — consulte com SQL direto |",
-        "| `DADOS.md` | este documento |",
-        "| `eventos.csv` | a timeline da seção 10, para uso de máquina |",
-        "| `evento_urls.csv` | uma linha por (evento, URL informada), com o casamento |",
-        "| `consultas.sql` | consultas prontas; boilerplate de SQL, **não** análise |",
-        "| `extras/` | onde largar exports manuais da UI do GSC |",
+        f"| `{NOME_DADOS}` | este documento — a escrituração de `{tipo}`, e de mais nenhum tipo |",
+        f"| `{NOME_CONSULTAS}` | consultas prontas, já com `WHERE tipo = '{tipo}'`; "
+        "boilerplate de SQL, **não** análise |",
+        f"| `../{NOME_SNAPSHOT}` | snapshot do acervo "
+        f"({arquivos.get('snapshot_mb', 0):.1f} MB) — o banco INTEIRO, com todos os "
+        "tipos coletados; consulte com SQL direto |",
+        "| `../eventos.csv` | a timeline da seção 10, para uso de máquina |",
+        "| `../evento_urls.csv` | uma linha por (evento, URL informada), com o casamento |",
+        "| `../extras/` | onde largar exports manuais da UI do GSC |",
+        "",
+        "O snapshot, a timeline e `extras/` ficam **um nível acima** porque não são "
+        "deste recorte: o snapshot é cópia do banco todo (ver seção 11) e um evento "
+        "anotado no site valeu para todas as superfícies de busca. Gerar o pacote de "
+        f"outro `type` acrescenta uma pasta irmã (`pacote/{outro}/`), reaproveita o "
+        "mesmo snapshot e **não toca em nada daqui**.",
         "",
     ]
+    if arquivos.get("snapshot") and not arquivos.get("snapshot_copiado"):
+        linhas += [
+            f"⚠ O snapshot **não foi recopiado** nesta geração (`--sem-snapshot`): é o "
+            f"arquivo de {arquivos.get('snapshot_em') or '—'}. Os documentos acima saíram "
+            "do banco de agora, então se houve ingestão depois dessa data o snapshot está "
+            "ATRÁS deles — regenere sem `--sem-snapshot` antes de cruzar os dois.",
+            "",
+        ]
     if reduzido:
         fora = ", ".join(f"`{t}`" for t in TABELAS_FORA_DO_REDUZIDO)
         linhas += [
@@ -1009,8 +1105,11 @@ def _ausencia_de_tipos(dados: dict) -> list:
         linhas.append(
             f"  O acervo TEM `{'`, `'.join(outros)}` coletado, e as linhas desse tipo "
             f"**estão neste snapshot** — toda tabela de fato tem a coluna `tipo`, então "
-            f"`WHERE tipo = '{outros[0]}'` as devolve. O que não existe aqui é a "
-            f"escrituração DELE em texto: para isso, `--tipo {outros[0]}`."
+            f"`WHERE tipo = '{outros[0]}'` as devolve (o `consultas.sql` desta pasta já "
+            f"filtra `{tipo}`; trocar o tipo no WHERE é o bastante). O que não existe "
+            f"nesta pasta é a escrituração DELE em texto: `py acervo.py pacote --site X "
+            f"--tipo {outros[0]}` escreve `pacote/{outros[0]}/DADOS.md` ao lado desta "
+            f"pasta, reaproveitando este mesmo snapshot e sem tocar neste documento."
         )
     if naos:
         linhas.append(
@@ -1106,12 +1205,14 @@ def montar_dados_md(dados: dict, *, arquivos: dict, extras: list) -> str:
 # ---------------------------------------------------------------------------
 
 
-def montar_consultas_sql(propriedade: str) -> str:
-    """O arquivo `consultas.sql`, gerado a partir de CONSULTAS."""
+def montar_consultas_sql(propriedade: str, tipo: str = "web") -> str:
+    """O arquivo `consultas.sql` do tipo, gerado a partir de CONSULTAS."""
     partes = [
         "-- consultas.sql — boilerplate de SQL para o acervo do GSC.",
         "--",
         f"-- Propriedade: {propriedade}",
+        f"-- type da Search Analytics: {tipo}  (todo filtro abaixo ja e deste tipo; o",
+        "-- snapshot tem os outros tipos coletados, acessiveis trocando o WHERE tipo).",
         "-- Nada aqui é análise: são as junções e as re-derivações que você ia escrever à",
         "-- mão de todo jeito, já com os guards certos (ctr e posição re-derivados, NULL",
         "-- de position tratado). Os valores a ajustar estão marcados com TROQUE.",
@@ -1120,7 +1221,7 @@ def montar_consultas_sql(propriedade: str) -> str:
         "-- 7 antes de interpretar as pontas das coortes de URL.",
         "",
     ]
-    for slug, titulo, explicacao, sql in CONSULTAS:
+    for slug, titulo, explicacao, sql in consultas_do_tipo(tipo):
         partes += [
             "-- " + "=" * 74,
             f"-- {slug}: {titulo}",
@@ -1189,6 +1290,38 @@ def _reduzir(caminho: str) -> None:
         conn.close()
 
 
+def tipos_com_documento(pasta: str) -> list:
+    """Os `type` que têm escrituração nesta pasta de pacote.
+
+    Lê o DISCO, não o banco: é a resposta para "o que esta pasta entrega hoje",
+    incluindo o documento de uma geração anterior que continua válido. É o que
+    permite a CLI dizer quais tipos têm documento sem prometer o que não existe.
+    """
+    if not os.path.isdir(pasta):
+        return []
+    return sorted(
+        nome for nome in os.listdir(pasta) if os.path.isfile(os.path.join(pasta, nome, NOME_DADOS))
+    )
+
+
+def _limpar_layout_antigo(pasta: str) -> list:
+    """Remove `DADOS.md`/`consultas.sql` da RAIZ, sobra do layout de um tipo só.
+
+    Até o pacote ganhar subpasta por `type`, os dois ficavam na raiz descrevendo
+    `web` (ou o último `--tipo` que rodou). Deixá-los ali seria a pior das
+    saídas: um documento mudo sobre qual tipo descreve, mais velho que os da
+    subpasta, no caminho exato onde a análise aprendeu a procurar. Apaga só
+    estes dois nomes, e só na raiz — nada dentro de `{tipo}/` é alcançado.
+    """
+    removidos = []
+    for nome in (NOME_DADOS, NOME_CONSULTAS):
+        caminho = os.path.join(pasta, nome)
+        if os.path.isfile(caminho):
+            os.remove(caminho)
+            removidos.append(nome)
+    return removidos
+
+
 def gerar(
     conn: sqlite3.Connection,
     *,
@@ -1198,17 +1331,30 @@ def gerar(
     destino: "str | None" = None,
     reduzido: bool = False,
     com_snapshot: bool = True,
+    snapshot_desta_geracao: bool = False,
 ) -> dict:
-    """Gera o pacote de análise. Retorna o inventário do que foi escrito.
+    """Gera o pacote de análise de UM `type`. Retorna o inventário do escrito.
+
+    Raiz compartilhada (snapshot, eventos.csv, evento_urls.csv, extras/) e
+    `{tipo}/` com os documentos daquele recorte — ver o docstring do módulo.
+    Gerar um tipo depois do outro NUNCA sobrescreve o documento do primeiro.
 
     `com_snapshot=False` existe para regenerar só os documentos (DADOS.md,
-    CSVs, consultas) sem recopiar centenas de MB — e para os testes.
+    CSVs, consultas) sem recopiar centenas de MB — é o que `--sem-snapshot`
+    passa, é o que `gerar_varios` usa do segundo tipo em diante, e é o que os
+    testes usam. `snapshot_desta_geracao=True` diz que o snapshot que está na
+    pasta foi copiado AGORA por quem chamou (é o caso do segundo tipo em
+    `gerar_varios`): sem isso o documento dele avisaria, falsamente, que o
+    snapshot pode estar atrasado em relação ao texto.
     """
     from core import storage
 
     pasta = destino or storage.acervo_pacote_dir(site)
+    pasta_tipo = os.path.join(pasta, tipo)
     pasta_extras = os.path.join(pasta, "extras")
     os.makedirs(pasta_extras, exist_ok=True)
+    os.makedirs(pasta_tipo, exist_ok=True)
+    layout_antigo = _limpar_layout_antigo(pasta)
 
     # Re-casar antes de ler: uma URL do evento pode só ter entrado em dim_pagina
     # numa ingestão posterior ao `anotar`.
@@ -1220,6 +1366,7 @@ def gerar(
 
     arquivos = {
         "pasta": pasta,
+        "pasta_tipo": pasta_tipo,
         "reduzido": reduzido,
         "origem": origem,
         "origem_mb": _tamanho_mb(origem),
@@ -1228,8 +1375,15 @@ def gerar(
         store.snapshot(conn, caminho_snapshot)
         if reduzido:
             _reduzir(caminho_snapshot)
-    arquivos["snapshot"] = caminho_snapshot if com_snapshot else None
-    arquivos["snapshot_mb"] = _tamanho_mb(caminho_snapshot) if com_snapshot else 0.0
+    # O snapshot é compartilhado: o que importa para o DADOS.md é se ele ESTÁ no
+    # pacote, não se esta geração o copiou. Com `--sem-snapshot` em cima de uma
+    # geração anterior ele está ali e é consultável — dizer "(nao gerado)" seria
+    # falso. O que precisa ficar dito é que ele pode estar ATRÁS dos documentos.
+    existe_snapshot = os.path.exists(caminho_snapshot)
+    arquivos["snapshot"] = caminho_snapshot if existe_snapshot else None
+    arquivos["snapshot_mb"] = _tamanho_mb(caminho_snapshot)
+    arquivos["snapshot_copiado"] = com_snapshot or snapshot_desta_geracao
+    arquivos["snapshot_em"] = _quando(caminho_snapshot) if existe_snapshot else None
 
     leia = os.path.join(pasta_extras, "LEIA.md")
     if not os.path.exists(leia):
@@ -1240,24 +1394,76 @@ def gerar(
         "eventos_csv": _escrever_eventos_csv(pasta, dados),
         "evento_urls_csv": _escrever_evento_urls_csv(pasta, conn, dados, casamento),
         "consultas": _escrever(
-            os.path.join(pasta, "consultas.sql"), montar_consultas_sql(propriedade)
+            os.path.join(pasta_tipo, NOME_CONSULTAS), montar_consultas_sql(propriedade, tipo)
         ),
         "dados_md": _escrever(
-            os.path.join(pasta, "DADOS.md"),
+            os.path.join(pasta_tipo, NOME_DADOS),
             montar_dados_md(dados, arquivos=arquivos, extras=_extras(pasta_extras)),
         ),
     }
 
     return {
         "pasta": pasta,
+        "pasta_tipo": pasta_tipo,
+        "tipo": tipo,
         "snapshot": arquivos["snapshot"],
         "snapshot_mb": arquivos["snapshot_mb"],
+        "snapshot_copiado": arquivos["snapshot_copiado"],
         "reduzido": reduzido,
         "arquivos": escritos,
+        "layout_antigo_removido": layout_antigo,
         "extras": [nome for nome, _ in _extras(pasta_extras)],
         "eventos": len(dados["eventos"]),
         "casamento": casamento,
         "dados": dados,
+        "tipos_com_documento": tipos_com_documento(pasta),
+    }
+
+
+def gerar_varios(
+    conn: sqlite3.Connection,
+    *,
+    propriedade: str,
+    site: str,
+    tipos: tuple = ("web",),
+    destino: "str | None" = None,
+    reduzido: bool = False,
+    com_snapshot: bool = True,
+) -> dict:
+    """Gera a escrituração de vários `type` com UM único snapshot.
+
+    Vale a pena existir por uma razão aritmética: o snapshot é o banco inteiro —
+    439 MB no site-piloto — e é idêntico para todo tipo. Rodar o comando duas
+    vezes copia 439 MB duas vezes para produzir o mesmo arquivo; aqui ele é
+    copiado na primeira volta e reaproveitado nas outras. Com dois tipos, é a
+    diferença entre ~880 MB de escrita e ~440 MB.
+    """
+    tipos = tuple(dict.fromkeys(tipos)) or ("web",)
+    por_tipo = {}
+    for indice, tipo in enumerate(tipos):
+        por_tipo[tipo] = gerar(
+            conn,
+            propriedade=propriedade,
+            site=site,
+            tipo=tipo,
+            destino=destino,
+            reduzido=reduzido,
+            # Só a primeira volta copia. As seguintes acham o arquivo no lugar e
+            # o declaram como o snapshot do pacote, porque é o que ele é — e
+            # recém-copiado, não sobra de geração anterior.
+            com_snapshot=com_snapshot and indice == 0,
+            snapshot_desta_geracao=com_snapshot,
+        )
+    primeiro = por_tipo[tipos[0]]
+    return {
+        "pasta": primeiro["pasta"],
+        "tipos": list(tipos),
+        "por_tipo": por_tipo,
+        "snapshot": primeiro["snapshot"],
+        "snapshot_mb": primeiro["snapshot_mb"],
+        "snapshot_copiado": primeiro["snapshot_copiado"],
+        "reduzido": reduzido,
+        "tipos_com_documento": tipos_com_documento(primeiro["pasta"]),
     }
 
 
@@ -1340,34 +1546,73 @@ def _escrever_evento_urls_csv(
     )
 
 
-def resumo_texto(resultado: dict) -> str:
-    """Resumo de uma linha por item, para o terminal."""
-    dados = resultado["dados"]
-    coortes = dados["coortes"]
-    partes = [
-        f"  pasta        : {resultado['pasta']}",
-        "  snapshot     : "
-        + (
-            f"{os.path.basename(resultado['snapshot'])} "
-            f"({resultado['snapshot_mb']:.1f} MB)"
-            + (" — REDUZIDO, sem fato_query_pagina" if resultado["reduzido"] else "")
-            if resultado["snapshot"]
-            else "(nao gerado)"
-        ),
-        f"  eventos      : {resultado['eventos']} anotado(s)",
-        f"  URLs         : {coortes.get('urls', 0)} com dado"
-        + (
+def _linha_snapshot(resultado: dict) -> str:
+    if not resultado["snapshot"]:
+        return "  snapshot     : (nao gerado)"
+    texto = (
+        f"  snapshot     : {NOME_SNAPSHOT} ({resultado['snapshot_mb']:.1f} MB) "
+        "— o banco INTEIRO, compartilhado por todos os tipos"
+    )
+    if resultado["reduzido"]:
+        texto += "; REDUZIDO, sem fato_query_pagina"
+    if not resultado["snapshot_copiado"]:
+        texto += "; NAO recopiado agora (--sem-snapshot): pode estar atras dos documentos"
+    return texto
+
+
+def _linha_do_tipo(tipo: str, parcial: dict) -> str:
+    coortes = parcial["dados"]["coortes"]
+    texto = (
+        f"  {tipo + '/':<13}: {NOME_DADOS} + {NOME_CONSULTAS} "
+        f"({coortes.get('urls', 0)} URL(s) com dado"
+    )
+    if coortes.get("urls"):
+        texto += (
             f"; {coortes.get('censuradas_a_esquerda', 0)} ja existiam no 1o dia, "
             f"{coortes.get('censuradas_a_direita', 0)} ainda vivas no ultimo (ARTEFATO)"
-            if coortes.get("urls")
-            else ""
-        ),
-        f"  extras/      : {len(resultado['extras'])} arquivo(s) do usuario",
+        )
+    return texto + ")"
+
+
+def resumo_texto(resultado: dict) -> str:
+    """Resumo de uma linha por item, para o terminal.
+
+    Aceita o resultado de `gerar` (um tipo) e de `gerar_varios` (vários). Diz
+    ONDE cada coisa ficou, porque o pacote agora tem dois andares: o que vale
+    para o acervo inteiro na raiz, e um documento por `type` na subpasta. E diz
+    quais tipos TÊM documento na pasta, não só quais foram gerados agora — um
+    `image/` escrito na semana passada continua lá, e a análise precisa saber.
+    """
+    por_tipo = resultado.get("por_tipo") or {resultado["tipo"]: resultado}
+    primeiro = next(iter(por_tipo.values()))
+    partes = [
+        f"  pasta        : {resultado['pasta']}",
+        _linha_snapshot(resultado),
+        f"  timeline     : eventos.csv, evento_urls.csv — {primeiro['eventos']} evento(s) "
+        "anotado(s), do acervo (nao de um tipo)",
+        f"  extras/      : {len(primeiro['extras'])} arquivo(s) do usuario",
+        f"  gerados agora: {', '.join(tipo + '/' for tipo in por_tipo)}",
     ]
-    nao_casaram = sum(len(v["sem_casamento"]) for v in resultado["casamento"].values())
+    partes += [_linha_do_tipo(tipo, parcial) for tipo, parcial in por_tipo.items()]
+    na_pasta = resultado.get("tipos_com_documento") or list(por_tipo)
+    outros = [tipo for tipo in na_pasta if tipo not in por_tipo]
+    if outros:
+        partes.append(
+            f"  ja na pasta  : {', '.join(outros)} — documento de geracao anterior, "
+            "intacto (regere com --tipos para atualizar junto)"
+        )
+    nao_casaram = sum(len(v["sem_casamento"]) for v in primeiro["casamento"].values())
     if nao_casaram:
         partes.append(
             f"  ATENCAO      : {nao_casaram} URL(s) de evento nao casaram com dim_pagina "
             "(ver evento_urls.csv)"
+        )
+    removidos = sorted(
+        {n for parcial in por_tipo.values() for n in parcial["layout_antigo_removido"]}
+    )
+    if removidos:
+        partes.append(
+            f"  layout antigo: {', '.join(removidos)} da raiz removido(s) — "
+            "o documento agora vive em {tipo}/, um por type"
         )
     return "\n".join(partes)

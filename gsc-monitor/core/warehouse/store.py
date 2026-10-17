@@ -763,6 +763,23 @@ def contar_linhas_por_tipo(conn: sqlite3.Connection, tabela: str) -> dict:
     return {linha["tipo"]: int(linha["n"]) for linha in conn.execute(sql)}
 
 
+def tipos_ingeridos(conn: sqlite3.Connection, *, propriedade: "str | None" = None) -> list:
+    """Os `type` que a ESCRITURAÇÃO registra — o que foi de fato pedido à API.
+
+    Lido de `ingestao`, não das tabelas de fato, e a diferença importa: um tipo
+    coletado cujos dias voltaram todos vazios aparece aqui (foi coletado, não
+    tem tráfego) e não apareceria numa contagem de linhas. É essa a lista que
+    `pacote --todos-os-tipos` usa, para não deixar de fora a escrituração de um
+    tipo só porque ele está vazio — "vazio" é exatamente o que ela declara.
+    """
+    sql = "SELECT DISTINCT tipo FROM ingestao"
+    parametros: tuple = ()
+    if propriedade:
+        sql += " WHERE propriedade = ?"
+        parametros = (propriedade,)
+    return sorted(linha["tipo"] for linha in conn.execute(sql + " ORDER BY tipo", parametros))
+
+
 def dias_provisorios(conn: sqlite3.Connection, *, propriedade: str) -> list:
     """Dias gravados como ainda assentando — a ponta da série, instável.
 

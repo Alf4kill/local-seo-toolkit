@@ -172,10 +172,18 @@ class _PacoteBase(unittest.TestCase):
             **kwargs,
         )
 
-    def _dados_md(self, **kwargs):
-        self._gerar(**kwargs)
-        with open(os.path.join(self.destino, "DADOS.md"), encoding="utf-8") as f:
+    def _caminho(self, *partes):
+        """Caminho dentro do pacote. A raiz é compartilhada; `{tipo}/` não é."""
+        return os.path.join(self.destino, *partes)
+
+    def _ler(self, *partes, encoding="utf-8"):
+        with open(self._caminho(*partes), encoding=encoding) as f:
             return f.read()
+
+    def _dados_md(self, **kwargs):
+        """O DADOS.md DO TIPO gerado — o default do `gerar` é `web`."""
+        self._gerar(**kwargs)
+        return self._ler(kwargs.get("tipo", "web"), pacote.NOME_DADOS)
 
 
 # ---------------------------------------------------------------------------
@@ -186,15 +194,25 @@ class _PacoteBase(unittest.TestCase):
 class TestEstrutura(_PacoteBase):
     def test_gera_todos_os_arquivos_e_a_pasta_extras(self):
         resultado = self._gerar()
-        for nome in ("DADOS.md", "eventos.csv", "evento_urls.csv", "consultas.sql"):
-            self.assertTrue(
-                os.path.exists(os.path.join(self.destino, nome)), f"{nome} nao foi gerado"
+        # Raiz: o que é do acervo inteiro (snapshot, timeline, extras/).
+        for nome in pacote.NOMES_COMPARTILHADOS:
+            self.assertTrue(os.path.exists(self._caminho(nome)), f"{nome} nao foi gerado na raiz")
+            self.assertFalse(
+                os.path.exists(self._caminho("web", nome)),
+                f"{nome} e do acervo inteiro: duplicar por tipo e o que esta estrutura evita",
             )
-        leia = os.path.join(self.destino, "extras", "LEIA.md")
+        # `web/`: o que é do tipo. Nomes fixos, pasta variável.
+        for nome in (pacote.NOME_DADOS, pacote.NOME_CONSULTAS):
+            self.assertTrue(
+                os.path.exists(self._caminho("web", nome)), f"{nome} nao foi gerado em web/"
+            )
+        leia = self._caminho("extras", "LEIA.md")
         self.assertTrue(os.path.exists(leia))
         with open(leia, encoding="utf-8") as f:
             self.assertIn("exports manuais", f.read())
         self.assertTrue(resultado["snapshot"].endswith(pacote.NOME_SNAPSHOT))
+        self.assertEqual(resultado["pasta_tipo"], self._caminho("web"))
+        self.assertEqual(resultado["tipos_com_documento"], ["web"])
 
     def test_snapshot_abre_e_tem_as_mesmas_contagens(self):
         resultado = self._gerar()
@@ -211,7 +229,7 @@ class TestEstrutura(_PacoteBase):
 
     def test_extras_largados_pelo_usuario_aparecem_no_dados_md(self):
         self._gerar()
-        with open(os.path.join(self.destino, "extras", "export_ia.csv"), "w") as f:
+        with open(self._caminho("extras", "export_ia.csv"), "w") as f:
             f.write("a,b\n1,2\n")
         texto = self._dados_md()
         self.assertIn("export_ia.csv", texto)
@@ -222,7 +240,7 @@ class TestEstrutura(_PacoteBase):
 
     def test_regerar_e_idempotente_e_nao_duplica_o_leia(self):
         self._gerar()
-        leia = os.path.join(self.destino, "extras", "LEIA.md")
+        leia = self._caminho("extras", "LEIA.md")
         with open(leia, "a", encoding="utf-8") as f:
             f.write("\nanotacao do usuario\n")
         self._gerar()
@@ -630,7 +648,7 @@ class TestEventosEUrls(_PacoteBase):
         # enquanto `evento_pagina` a tem: o pacote se contradiria.
         ident = self._evento(["www.exemplo.com.br/pagina-velha"])
         self._gerar()
-        with open(os.path.join(self.destino, "evento_urls.csv"), encoding="utf-8-sig") as f:
+        with open(self._caminho("evento_urls.csv"), encoding="utf-8-sig") as f:
             linhas = [linha for linha in f.read().splitlines() if not linha.startswith("#")]
         self.assertEqual(len(linhas), 2)
         self.assertIn(f"{URL_VELHA},1", linhas[1])
@@ -738,13 +756,13 @@ class TestEventosEUrls(_PacoteBase):
             ["https://www.exemplo.com.br/pagina-velha", "https://www.exemplo.com.br/nunca-existiu"]
         )
         self._gerar()
-        with open(os.path.join(self.destino, "eventos.csv"), encoding="utf-8-sig") as f:
+        with open(self._caminho("eventos.csv"), encoding="utf-8-sig") as f:
             eventos = [linha for linha in f.read().splitlines() if not linha.startswith("#")]
         self.assertIn("urls_informadas", eventos[0])
         self.assertTrue(eventos[1].startswith(f"{ident},2026-01-25"))
         self.assertTrue(eventos[1].endswith(",2,1"))
 
-        with open(os.path.join(self.destino, "evento_urls.csv"), encoding="utf-8-sig") as f:
+        with open(self._caminho("evento_urls.csv"), encoding="utf-8-sig") as f:
             linhas = [linha for linha in f.read().splitlines() if not linha.startswith("#")]
         self.assertEqual(len(linhas), 3)  # cabeçalho + 2 URLs informadas
         self.assertIn(f"{URL_VELHA},1", linhas[1])
@@ -813,7 +831,7 @@ class TestAusenciaDeTipos(_PacoteBase):
             data_state="final",
         )
         self._gerar()
-        copia = sqlite3.connect(os.path.join(self.destino, "acervo.sqlite3"))
+        copia = sqlite3.connect(self._caminho(pacote.NOME_SNAPSHOT))
         try:
             tipos = {linha[0] for linha in copia.execute("SELECT DISTINCT tipo FROM fato_total")}
         finally:
@@ -842,6 +860,237 @@ class TestAusenciaDeTipos(_PacoteBase):
         )
 
 
+class TestDoisTipos(_PacoteBase):
+    """Um snapshot, um conjunto de documentos POR tipo.
+
+    O `--tipos` da coleta tornou possível ter `web` e `image` no mesmo banco, e
+    aí o pacote de um tipo não pode sobrescrever o do outro: era perda de
+    trabalho sem aviso. O snapshot, ao contrário, é `Connection.backup()` do
+    banco inteiro — idêntico para todo tipo, 439 MB no site-piloto —, e por isso
+    é compartilhado em vez de duplicado.
+    """
+
+    def _semear_image(self):
+        """`image` com volume PRÓPRIO, diferente do de `web`, em dias próprios.
+
+        Números diferentes de propósito: é o que faz o teste provar que cada
+        documento conta o SEU tipo em vez de os dois contarem a mesma coisa.
+        """
+        dias = DIAS[:10]
+        store.gravar_lote(
+            self.conn,
+            grao="total",
+            propriedade=PROPRIEDADE,
+            tipo="image",
+            linhas=[_linha(dia, {}, clicks=1, impressions=500) for dia in dias],
+            dias_do_lote=dias,
+            data_state="final",
+            agregacao="byProperty",
+        )
+        store.gravar_lote(
+            self.conn,
+            grao="pagina",
+            propriedade=PROPRIEDADE,
+            tipo="image",
+            linhas=[_linha(dia, {"pagina_id": URL_ACENTO}, impressions=400) for dia in dias],
+            dias_do_lote=dias,
+            data_state="final",
+            agregacao="byPage",
+        )
+        return dias
+
+    def test_gerar_os_dois_tipos_em_sequencia_deixa_os_dois_documentos(self):
+        dias_image = self._semear_image()
+        self._gerar(tipo="web")
+        self._gerar(tipo="image")
+
+        web = self._ler("web", pacote.NOME_DADOS)
+        image = self._ler("image", pacote.NOME_DADOS)
+        # Cada um declara o SEU tipo...
+        self.assertIn("`type` da Search Analytics**: `web`", web)
+        self.assertIn("`type` da Search Analytics**: `image`", image)
+        # ...e os números são do seu tipo, não da tabela toda.
+        self.assertIn(f"| {len(DIAS)} |", web)
+        self.assertIn(f"| {len(dias_image)} |", image)
+        self.assertNotEqual(
+            web.split("## 3.")[1].split("## 4.")[0],
+            image.split("## 3.")[1].split("## 4.")[0],
+        )
+        # O de web tem de continuar íntegro: a geração de image não o tocou.
+        self.assertIn("Este documento descreve só `web`", web)
+        self.assertIn("Este documento descreve só `image`", image)
+
+    def test_gerar_o_segundo_tipo_nao_mexe_no_arquivo_do_primeiro(self):
+        self._semear_image()
+        self._gerar(tipo="web")
+        caminho_web = self._caminho("web", pacote.NOME_DADOS)
+        antes = open(caminho_web, encoding="utf-8").read()
+        mtime = os.path.getmtime(caminho_web)
+        self._gerar(tipo="image")
+        self.assertEqual(open(caminho_web, encoding="utf-8").read(), antes)
+        self.assertEqual(os.path.getmtime(caminho_web), mtime)
+
+    def test_o_snapshot_e_um_so_e_fica_na_raiz(self):
+        self._semear_image()
+        um = self._gerar(tipo="web")
+        outro = self._gerar(tipo="image")
+        self.assertEqual(um["snapshot"], outro["snapshot"])
+        self.assertEqual(um["snapshot"], self._caminho(pacote.NOME_SNAPSHOT))
+        # Nada de snapshot dentro das subpastas: seriam centenas de MB por tipo.
+        for tipo in ("web", "image"):
+            self.assertFalse(os.path.exists(self._caminho(tipo, pacote.NOME_SNAPSHOT)))
+
+    def test_consultas_do_tipo_filtram_o_tipo_do_pacote(self):
+        self._semear_image()
+        self._gerar(tipo="image")
+        sql = self._ler("image", pacote.NOME_CONSULTAS)
+        self.assertIn("tipo = 'image'", sql)
+        self.assertNotIn("tipo = 'web'", sql)
+
+    def test_todo_filtro_de_tipo_das_consultas_e_trocavel(self):
+        # Se uma consulta nova escrever o filtro de outra forma (tipo='image',
+        # tipo IN (...)), a troca por tipo passa batido e o pacote de image sai
+        # com SQL de web — erro silencioso, do tipo que este modulo existe para
+        # impedir. O teste trava a forma literal.
+        for slug, _titulo, _expl, sql in pacote.CONSULTAS:
+            with self.subTest(consulta=slug):
+                if pacote._FILTRO_TIPO_TESTE in sql:
+                    self.assertIn(pacote._FILTRO_TIPO, sql)
+                    self.assertEqual(
+                        sql.count(pacote._FILTRO_TIPO_TESTE), sql.count(pacote._FILTRO_TIPO)
+                    )
+
+    def test_consultas_do_tipo_executam_contra_o_snapshot(self):
+        self._semear_image()
+        resultado = self._gerar(tipo="image")
+        copia = sqlite3.connect(resultado["snapshot"])
+        try:
+            for slug, _t, _e, sql in pacote.consultas_do_tipo("image"):
+                with self.subTest(consulta=slug):
+                    copia.execute(sql).fetchall()
+        finally:
+            copia.close()
+
+    def test_gerar_varios_copia_o_snapshot_uma_vez_so(self):
+        self._semear_image()
+        copias = []
+        original = store.snapshot
+
+        def espiao(conn, destino):
+            copias.append(destino)
+            return original(conn, destino)
+
+        store.snapshot = espiao
+        try:
+            resultado = pacote.gerar_varios(
+                self.conn,
+                propriedade=PROPRIEDADE,
+                site=DOMINIO,
+                tipos=("web", "image"),
+                destino=self.destino,
+            )
+        finally:
+            store.snapshot = original
+
+        self.assertEqual(len(copias), 1, "o snapshot foi copiado mais de uma vez")
+        self.assertEqual(resultado["tipos"], ["web", "image"])
+        self.assertEqual(sorted(resultado["por_tipo"]), ["image", "web"])
+        self.assertEqual(resultado["tipos_com_documento"], ["image", "web"])
+        for tipo in ("web", "image"):
+            self.assertTrue(os.path.exists(self._caminho(tipo, pacote.NOME_DADOS)))
+        # O documento do 2o tipo NÃO pode dizer que não há snapshot: há, é o da
+        # raiz, e foi copiado nesta mesma geração.
+        texto = self._ler("image", pacote.NOME_DADOS)
+        self.assertIn(f"`../{pacote.NOME_SNAPSHOT}`", texto)
+        self.assertNotIn("não foi recopiado", texto)
+
+    def test_gerar_varios_ignora_tipo_repetido(self):
+        resultado = pacote.gerar_varios(
+            self.conn,
+            propriedade=PROPRIEDADE,
+            site=DOMINIO,
+            tipos=("web", "web"),
+            destino=self.destino,
+        )
+        self.assertEqual(resultado["tipos"], ["web"])
+
+    def test_a_secao_2_diz_onde_cada_coisa_ficou(self):
+        texto = self._dados_md()
+        self.assertIn("pacote/web/", texto)
+        self.assertIn(f"`../{pacote.NOME_SNAPSHOT}`", texto)
+        self.assertIn("`../eventos.csv`", texto)
+        self.assertIn("`../extras/`", texto)
+        self.assertIn("não toca em nada daqui", texto)
+        # A pasta irmã do exemplo é de OUTRO tipo, nunca a do próprio documento.
+        self.assertIn("pasta irmã (`pacote/image/`)", texto)
+        self.assertNotIn("pasta irmã (`pacote/web/`)", texto)
+
+    def test_resumo_texto_diz_onde_ficou_e_quais_tipos_tem_documento(self):
+        self._semear_image()
+        resultado = pacote.gerar_varios(
+            self.conn,
+            propriedade=PROPRIEDADE,
+            site=DOMINIO,
+            tipos=("web", "image"),
+            destino=self.destino,
+        )
+        resumo = pacote.resumo_texto(resultado)
+        self.assertIn(self.destino, resumo)
+        self.assertIn("compartilhado por todos os tipos", resumo)
+        self.assertIn("web/", resumo)
+        self.assertIn("image/", resumo)
+        self.assertIn("eventos.csv", resumo)
+
+    def test_resumo_texto_de_um_tipo_nomeia_o_documento_antigo_do_outro(self):
+        # Gerar só `web` depois de ter gerado `image` não apaga o de image, e o
+        # resumo tem de dizer que ele continua lá — senão o analista acha que a
+        # pasta entrega um tipo só.
+        self._semear_image()
+        self._gerar(tipo="image")
+        resumo = pacote.resumo_texto(self._gerar(tipo="web"))
+        self.assertIn("ja na pasta  : image", resumo)
+        self.assertIn("intacto", resumo)
+
+    def test_tipos_com_documento_le_o_disco(self):
+        self.assertEqual(pacote.tipos_com_documento(self.destino), [])
+        self._semear_image()
+        self._gerar(tipo="web")
+        self._gerar(tipo="image")
+        self.assertEqual(pacote.tipos_com_documento(self.destino), ["image", "web"])
+
+    def test_layout_antigo_na_raiz_e_removido(self):
+        # Pacote gerado antes da subpasta: DADOS.md e consultas.sql na raiz,
+        # mudos sobre qual tipo descrevem. Deixá-los seria pior que apagá-los —
+        # é o caminho exato onde a análise aprendeu a procurar.
+        os.makedirs(self.destino, exist_ok=True)
+        for nome in (pacote.NOME_DADOS, pacote.NOME_CONSULTAS):
+            with open(self._caminho(nome), "w", encoding="utf-8") as f:
+                f.write("pacote do layout antigo\n")
+        resultado = self._gerar()
+        self.assertEqual(
+            resultado["layout_antigo_removido"], [pacote.NOME_DADOS, pacote.NOME_CONSULTAS]
+        )
+        self.assertFalse(os.path.exists(self._caminho(pacote.NOME_DADOS)))
+        self.assertTrue(os.path.exists(self._caminho("web", pacote.NOME_DADOS)))
+        self.assertIn("layout antigo", pacote.resumo_texto(resultado))
+
+    def test_remover_o_layout_antigo_nao_alcanca_a_subpasta_de_outro_tipo(self):
+        self._semear_image()
+        self._gerar(tipo="image")
+        intacto = self._ler("image", pacote.NOME_DADOS)
+        with open(self._caminho(pacote.NOME_DADOS), "w", encoding="utf-8") as f:
+            f.write("sobra do layout antigo\n")
+        self._gerar(tipo="web")
+        self.assertEqual(self._ler("image", pacote.NOME_DADOS), intacto)
+
+    def test_tipos_ingeridos_vem_da_escrituracao(self):
+        self.assertEqual(store.tipos_ingeridos(self.conn, propriedade=PROPRIEDADE), ["web"])
+        self._semear_image()
+        self.assertEqual(
+            store.tipos_ingeridos(self.conn, propriedade=PROPRIEDADE), ["image", "web"]
+        )
+
+
 class TestConsultas(_PacoteBase):
     def test_toda_consulta_executa_contra_o_snapshot(self):
         store.adicionar_evento(
@@ -864,8 +1113,7 @@ class TestConsultas(_PacoteBase):
 
     def test_o_arquivo_contem_toda_consulta_e_o_aviso_de_troque(self):
         self._gerar()
-        with open(os.path.join(self.destino, "consultas.sql"), encoding="utf-8") as f:
-            texto = f.read()
+        texto = self._ler("web", pacote.NOME_CONSULTAS)
         for slug, titulo, _expl, _sql in pacote.CONSULTAS:
             self.assertIn(slug, texto)
             self.assertIn(titulo, texto)
@@ -956,8 +1204,21 @@ class TestSnapshotReduzido(_PacoteBase):
     def test_sem_snapshot_gera_so_os_documentos(self):
         resultado = self._gerar(com_snapshot=False)
         self.assertIsNone(resultado["snapshot"])
-        self.assertFalse(os.path.exists(os.path.join(self.destino, pacote.NOME_SNAPSHOT)))
-        self.assertTrue(os.path.exists(os.path.join(self.destino, "DADOS.md")))
+        self.assertFalse(os.path.exists(self._caminho(pacote.NOME_SNAPSHOT)))
+        self.assertTrue(os.path.exists(self._caminho("web", pacote.NOME_DADOS)))
+
+    def test_sem_snapshot_sobre_geracao_anterior_nao_finge_que_nao_tem(self):
+        # O snapshot é COMPARTILHADO: regenerar só os documentos não o apaga, e
+        # dizer "(nao gerado)" sobre um arquivo que está ali seria falso. O que
+        # o documento tem de declarar é que ele pode estar atrás dos textos.
+        self._gerar()
+        resultado = self._gerar(com_snapshot=False)
+        self.assertTrue(resultado["snapshot"].endswith(pacote.NOME_SNAPSHOT))
+        self.assertFalse(resultado["snapshot_copiado"])
+        self.assertGreater(resultado["snapshot_mb"], 0)
+        texto = self._ler("web", pacote.NOME_DADOS)
+        self.assertIn("não foi recopiado", texto)
+        self.assertIn("--sem-snapshot", texto)
 
 
 # ---------------------------------------------------------------------------

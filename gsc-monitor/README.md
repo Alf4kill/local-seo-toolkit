@@ -221,6 +221,22 @@ py acervo.py diario   --site www.exemplo.com.br            # SEMANAL, para sempr
 py acervo.py pacote   --site www.exemplo.com.br            # snapshot + DADOS.md
 ```
 
+O `pacote` escreve em `relatorios/{dominio}/acervo/pacote/`, em dois andares:
+
+```
+pacote/
+  acervo.sqlite3    snapshot do banco INTEIRO (todos os `type` coletados)
+  eventos.csv       a timeline anotada à mão — do acervo, não de um tipo
+  evento_urls.csv   uma linha por (evento, URL informada), com o casamento
+  extras/           onde largar exports manuais da UI do GSC
+  web/
+    DADOS.md        a escrituração do `type` web — leia ANTES de concluir nada
+    consultas.sql   consultas prontas, já com `WHERE tipo = 'web'`
+  image/            o mesmo para image, se você gerou esse tipo também
+```
+
+A raiz é compartilhada; a subpasta é o que é de **um** `type`.
+
 O `diario` é a parte que **não pode falhar**: a retenção da API é uma janela
 móvel de ~16 meses, então cada semana sem rodar apaga para sempre a semana mais
 antiga. É ele que faz 16 meses virarem 2 anos.
@@ -258,10 +274,27 @@ vazios — o `--dry-run` mostra o custo antes de gastar requisição.
 > espelhar o do `backfill`.** O `status` lista a cobertura por tipo e nomeia os
 > que nunca foram coletados, justamente para isso aparecer.
 
-O pacote é de **um** tipo (`pacote --tipo image` para o outro), e a seção 11 do
-`DADOS.md` declara qual tipo ele cobre, quais existem no acervo e estão fora
-dele, e quais nunca foram coletados — para ausência de coleta nunca ser lida
-como ausência de tráfego.
+O `pacote` tem o mesmo par de flags, mais uma terceira forma:
+
+```bash
+py acervo.py pacote --site www.exemplo.com.br --tipos web,image   # os dois documentos
+py acervo.py pacote --site www.exemplo.com.br --todos-os-tipos    # todo tipo coletado
+py acervo.py pacote --site www.exemplo.com.br --tipo image        # só este
+```
+
+Cada `type` ganha o SEU `pacote/{tipo}/DADOS.md`, e gerar um **nunca** sobrescreve
+o do outro. O snapshot é **um só**, na raiz: é `Connection.backup()` do banco
+inteiro, logo já contém todos os tipos e é idêntico para qualquer `--tipo` —
+duplicá-lo custaria centenas de MB (439 MB no site-piloto) sem ganho nenhum. Por
+isso `--tipos web,image` numa chamada é melhor que rodar o comando duas vezes:
+copia o snapshot uma vez. `--sem-snapshot` regenera só os documentos e declara,
+no próprio `DADOS.md`, que o snapshot é de uma geração anterior.
+
+A seção 11 do `DADOS.md` declara qual tipo aquele documento cobre, diz que as
+linhas dos outros tipos coletados **estão no snapshot** (consultáveis com
+`WHERE tipo = ...`, já que o recorte é só do texto) e nomeia os tipos que nunca
+foram coletados — para ausência de coleta nunca ser lida como ausência de
+tráfego.
 
 ---
 

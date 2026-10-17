@@ -84,9 +84,16 @@ py acervo.py anotar   --site www.exemplo.com.br --data 2026-03-10 [--ate 2026-03
 #   com a do GSC (store.chave_pagina: canonical_path + unquote) e e o que permite
 #   comparar URLs tratadas contra nao tratadas
 py acervo.py eventos  --site www.exemplo.com.br [--remover ID] [--urls]
-py acervo.py pacote   --site www.exemplo.com.br [--reduzido] [--sem-snapshot]
-#   gera relatorios/{dom}/acervo/pacote/: snapshot (Connection.backup), DADOS.md,
-#   eventos.csv, evento_urls.csv, consultas.sql e extras/ (exports manuais da UI).
+py acervo.py pacote   --site www.exemplo.com.br [--reduzido] [--sem-snapshot] \
+    [--tipo image | --tipos web,image | --todos-os-tipos]
+#   gera relatorios/{dom}/acervo/pacote/ em DOIS andares:
+#     raiz        -> snapshot (Connection.backup do banco INTEIRO, todos os type),
+#                    eventos.csv, evento_urls.csv, extras/ (exports manuais da UI)
+#     {tipo}/     -> DADOS.md e consultas.sql daquele `type`, um por tipo
+#   um snapshot compartilhado (439 MB no site-piloto; duplicar por tipo seria
+#   desperdicio) e um conjunto de documentos por tipo: gerar `image` depois de
+#   `web` NAO sobrescreve o documento de web. `--tipos`/`--todos-os-tipos`
+#   escrituram vários numa chamada, copiando o snapshot uma única vez.
 #   --reduzido tira fato_query_pagina (>metade do volume) e DECLARA isso no DADOS.md
 
 # CLI crawl budget (100% local, SEM cota — lê o access log do servidor)
@@ -94,7 +101,7 @@ py logs.py --site www.exemplo.com.br --logs access.log [access.log.1.gz ...]
 #   --gsc  cruza com o último _posicao.json (money pages subcrawladas)
 #   --verify-googlebot  confirma o bot por DNS (lento)   --no-sitemap  --format
 
-# Testes  (591 testes; rode da pasta gsc-monitor/)
+# Testes  (655 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 

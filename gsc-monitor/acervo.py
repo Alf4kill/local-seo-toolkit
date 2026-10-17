@@ -33,8 +33,11 @@ Subcomandos:
                É o que transforma a análise em comparação de URLs tratadas
                contra não tratadas.
     eventos    Lista (ou remove) os eventos anotados.
-    pacote     Gera relatorios/{dominio}/acervo/pacote/: snapshot do banco,
-               DADOS.md, eventos.csv, consultas.sql e extras/.
+    pacote     Gera relatorios/{dominio}/acervo/pacote/: na raiz o snapshot do
+               banco (todos os `type`), eventos.csv, evento_urls.csv e extras/;
+               em pacote/{tipo}/ o DADOS.md e o consultas.sql daquele tipo.
+               `--tipos web,image` (ou `--todos-os-tipos`) escritura vários de
+               uma vez reaproveitando o único snapshot.
     status     O que existe no acervo, o que falta e o que não é confiável.
 
 Agendamento (Windows), depois de `aferir` e do primeiro `backfill`:
@@ -629,16 +632,37 @@ def cmd_eventos(args) -> dict:
     return {"eventos": eventos}
 
 
+def _tipos_do_pacote(conn, args, *, propriedade: str) -> tuple:
+    """Quais `type` ganham documento nesta geração do pacote.
+
+    `--todos-os-tipos` existe porque o pacote de um tipo é um recorte e quem
+    coletou dois quer os dois escriturados — e porque o snapshot é o banco
+    inteiro: gerar os dois numa chamada copia 439 MB uma vez em vez de duas.
+    Pergunta à escrituração em vez de aceitar uma lista digitada, que é como se
+    esquece justamente o tipo que você coletou meses atrás.
+    """
+    if getattr(args, "todos_os_tipos", False):
+        tipos = tuple(store.tipos_ingeridos(conn, propriedade=propriedade))
+        if not tipos:
+            raise AcervoError(
+                "--todos-os-tipos: a escrituracao deste site nao registra tipo nenhum. "
+                "Rode o backfill antes (nenhum dia foi ingerido ainda)."
+            )
+        return tipos
+    return _parse_tipos(args)
+
+
 def cmd_pacote(args) -> dict:
-    """Gera o pacote de análise: snapshot + DADOS.md + CSVs + consultas + extras/."""
+    """Gera o pacote de análise: snapshot compartilhado + um documento por tipo."""
     dominio = normalize_domain(args.site)
     conn, propriedade = _abrir(args.site)
     try:
-        resultado = pacote.gerar(
+        tipos = _tipos_do_pacote(conn, args, propriedade=propriedade)
+        resultado = pacote.gerar_varios(
             conn,
             propriedade=propriedade,
             site=dominio,
-            tipo=args.tipo,
+            tipos=tipos,
             reduzido=args.reduzido,
             com_snapshot=not args.sem_snapshot,
         )
@@ -652,11 +676,15 @@ def cmd_pacote(args) -> dict:
     print("-" * 78)
     print("  Leia o DADOS.md ANTES de concluir qualquer coisa: as secoes 4 a 7 existem")
     print("  porque cada uma corresponde a uma leitura errada que este dado ja produziu.")
+    print(f"  Cada pasta de tipo tem o SEU DADOS.md ({', '.join(resultado['tipos'])}): as secoes")
+    print("  1 e 3 a 7 sao daquele type, e o snapshot da raiz tem todos os tipos coletados.")
     print("=" * 78 + "\n")
+    primeiro = resultado["por_tipo"][resultado["tipos"][0]]
     return {
         "pasta": resultado["pasta"],
         "snapshot_mb": resultado["snapshot_mb"],
-        "eventos": resultado["eventos"],
+        "eventos": primeiro["eventos"],
+        "tipos": resultado["tipos"],
     }
 
 
@@ -867,7 +895,29 @@ def parse_args(argv=None) -> argparse.Namespace:
     alvo_pac = p_pac.add_mutually_exclusive_group(required=True)
     alvo_pac.add_argument("--site", help="dominio ou sc-domain:")
     alvo_pac.add_argument("--batch", help="arquivo com um dominio por linha")
-    p_pac.add_argument("--tipo", default="web", choices=plan.TIPOS_VALIDOS)
+    # Mesmo par mutuamente exclusivo dos comandos de ingestao, mais a forma que
+    # so faz sentido aqui: o pacote nao gasta requisicao, entao escriturar TODO
+    # tipo coletado de uma vez nao tem custo de cota — so o unico snapshot.
+    quais_pac = p_pac.add_mutually_exclusive_group()
+    quais_pac.add_argument(
+        "--tipo",
+        default="web",
+        choices=plan.TIPOS_VALIDOS,
+        help="`type` da Search Analytics a escriturar (padrao: web)",
+    )
+    quais_pac.add_argument(
+        "--tipos",
+        help=(
+            "varios `type` separados por virgula (ex. web,image): um documento por "
+            "tipo em pacote/{tipo}/, reaproveitando o unico snapshot"
+        ),
+    )
+    quais_pac.add_argument(
+        "--todos-os-tipos",
+        dest="todos_os_tipos",
+        action="store_true",
+        help="escritura todo `type` que a ingestao registra para este site",
+    )
     p_pac.add_argument(
         "--reduzido",
         action="store_true",

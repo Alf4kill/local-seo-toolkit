@@ -707,8 +707,11 @@ def acervo_pacote_dir(site: str) -> str:
     Pasta do pacote de análise do domínio:
         relatorios/{safe_domain}/acervo/pacote/
 
-    É esta pasta inteira que atravessa a fronteira para a sessão de análise —
-    snapshot do banco, DADOS.md, eventos.csv, consultas.sql e extras/.
+    É esta pasta inteira que atravessa a fronteira para a sessão de análise. A
+    RAIZ guarda o que é do acervo inteiro — snapshot do banco (todos os `type`),
+    eventos.csv, evento_urls.csv e extras/ —, e cada `type` ganha uma subpasta
+    `pacote/{tipo}/` com o DADOS.md e o consultas.sql daquele recorte. Quem
+    monta esse layout é `core/warehouse/pacote.py`, que o explica.
     """
     folder = os.path.join(_acervo_dir(site), "pacote")
     os.makedirs(folder, exist_ok=True)
