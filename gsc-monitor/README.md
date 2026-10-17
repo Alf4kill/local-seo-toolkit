@@ -390,7 +390,7 @@ sugestão de destino (casariam com qualquer página).
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Saída esperada: **482 testes OK**. Toda a suíte roda no pytest (config em
+Saída esperada: **655 testes OK**. Toda a suíte roda no pytest (config em
 `pytest.ini`); as chamadas de rede são mockadas, então nenhum teste gasta cota.
 A CI ainda aplica um piso de cobertura (40%).
 

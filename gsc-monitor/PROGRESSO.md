@@ -238,7 +238,7 @@ gsc-monitor/
 
 **Testes:** `test_phase6.py` — 34/34 testes passaram
 **Total acumulado (à época):** 11+9 (F1-F2) + 21 (F4) + 27 (F5) + 34 (F6) = 102 testes.
-Hoje a suíte roda com `py -m pytest` (runner único) e soma **482 testes**
+Hoje a suíte roda com `py -m pytest` (runner único) e soma **655 testes**
 (inclui o analisador de crawl budget — ver "Extensão" abaixo).
 
 ---
@@ -579,7 +579,7 @@ openpyxl>=3.1.0
 9. **API key Google Cloud:** env `GOOGLE_API_KEY` ou arquivo `google_api_key.txt` ou campo na GUI
 10. **pytrends:** requer `pip install pytrends`; sem ela `--trends` imprime instrução e pula
 11. **Dashboard HTML:** gerado automaticamente em `relatorios/{dominio}/dashboard.html` a cada execução de posicionamento; botão "Dashboard" na GUI abre no navegador
-12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 482 testes).
+12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 655 testes).
 
 ---
 
