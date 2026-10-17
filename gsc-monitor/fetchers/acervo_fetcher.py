@@ -138,7 +138,9 @@ def _executar_passo(
         passo.fim,
         passo.dimensoes,
         tipo=passo.tipo,
-        data_state=passo.data_state,
+        # O passo carrega o rotulo de PROVENIENCIA ('final_provisorio' inclusive);
+        # a API so aceita 'final'/'all'. A traducao mora aqui, na fronteira.
+        data_state=plan.data_state_api(passo.data_state),
         filtros=passo.filtros,
     )
 

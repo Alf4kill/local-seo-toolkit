@@ -115,6 +115,36 @@ ESTADO_FINAL = "final"
 ESTADO_PROVISORIO = "final_provisorio"
 ESTADO_FRESCO = "all"
 
+# Dois conceitos que NAO sao o mesmo, e confundi-los rende
+# 400 "Invalid value at 'data_state'":
+#   - o que PEDIMOS a API: so 'final', 'all' ou 'hourly_all';
+#   - o que GRAVAMOS como proveniencia: 'final', 'final_provisorio' ou 'all'.
+# 'final_provisorio' e rotulo nosso e nao existe na API: um dia que ainda assenta
+# e pedido com 'final' como qualquer outro, e o rotulo so registra, na linha
+# gravada, que aquele valor ainda pode mudar.
+DATA_STATES_API = ("final", "all", "hourly_all")
+
+_ESTADO_PARA_API = {
+    ESTADO_FINAL: "final",
+    ESTADO_PROVISORIO: "final",
+    ESTADO_FRESCO: "all",
+}
+
+
+def data_state_api(estado: str) -> str:
+    """Traduz o estado de proveniencia no valor que a API aceita em `dataState`.
+
+    Chamada obrigatoria na fronteira com a rede. Erra alto num estado
+    desconhecido em vez de deixar a API responder 400 depois da requisicao.
+    """
+    try:
+        return _ESTADO_PARA_API[estado]
+    except KeyError:
+        raise ValueError(
+            f"estado de proveniencia desconhecido: {estado!r}. "
+            f"Conhecidos: {', '.join(_ESTADO_PARA_API)}."
+        ) from None
+
 
 @dataclass(frozen=True)
 class Passo:
@@ -267,7 +297,17 @@ def montar_corpo(
 
     `dataState` é 'final' por default — o acervo é um arquivo, e dado fresco é
     volátil. A ponta fresca é uma passada separada e explicitamente marcada.
+
+    Aceita SÓ o que a API aceita (`DATA_STATES_API`). Rótulo de proveniência
+    nosso passa por `data_state_api()` primeiro — ver a nota lá.
     """
+    if data_state not in DATA_STATES_API:
+        raise ValueError(
+            f"dataState invalido para a API: {data_state!r}. Aceitos: "
+            f"{', '.join(DATA_STATES_API)}. Rotulo de proveniencia (ex. "
+            f"{ESTADO_PROVISORIO!r}) tem de passar por data_state_api() antes."
+        )
+
     corpo: dict = {
         "startDate": inicio,
         "endDate": fim,
@@ -361,30 +401,44 @@ def montar_passos(
 ) -> list:
     """Transforma uma lista de dias pendentes nos Passos que os cobrem.
 
-    O `data_state` do passo é o do dia MAIS NOVO do lote: um lote que contém
-    qualquer dia ainda assentando é, como um todo, provisório. Conservador de
-    propósito — é melhor marcar um dia definitivo como provisório do que o
-    contrário.
+    Os dias são separados na fronteira do assentamento ANTES de virarem lotes,
+    para que nenhum lote misture dia definitivo com dia que ainda assenta. Um
+    lote misto obrigaria a rotular o conjunto pelo dia mais novo, e um backfill
+    de 480 dias (um lote só, terminando na ponta fresca) gravaria a série
+    INTEIRA como provisória — fazendo `dias_provisorios` e o DADOS.md dizerem
+    "não tire conclusão daqui" sobre 16 meses de dado assentado.
+
+    O corte custa no máximo uma requisição a mais por grão.
     """
     if grao not in GRAOS:
         raise ValueError(f"grao desconhecido: {grao}")
 
     spec = GRAOS[grao]
     tamanho = tamanho_lote or ACERVO_DIAS_LOTE.get(grao, 30)
+
+    if data_state:
+        grupos = [(data_state, sorted(dias))]
+    else:
+        ordenados = sorted(dias)
+        grupos = [
+            (ESTADO_FINAL, [d for d in ordenados if dia_definitivo(d, hoje=hoje)]),
+            (ESTADO_PROVISORIO, [d for d in ordenados if not dia_definitivo(d, hoje=hoje)]),
+        ]
+
     passos = []
-    for lote in agrupar_em_lotes(dias, tamanho):
-        estado = data_state or estado_do_dia(lote[-1], hoje=hoje)
-        passos.append(
-            Passo(
-                grao=grao,
-                tipo=tipo,
-                dimensoes=spec["dimensoes"],
-                inicio=lote[0],
-                fim=lote[-1],
-                dias=tuple(lote),
-                data_state=estado,
+    for estado, grupo in grupos:
+        for lote in agrupar_em_lotes(grupo, tamanho):
+            passos.append(
+                Passo(
+                    grao=grao,
+                    tipo=tipo,
+                    dimensoes=spec["dimensoes"],
+                    inicio=lote[0],
+                    fim=lote[-1],
+                    dias=tuple(lote),
+                    data_state=estado,
+                )
             )
-        )
     return passos
 
 

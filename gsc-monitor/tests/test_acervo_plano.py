@@ -162,6 +162,42 @@ class TestMontarCorpo(unittest.TestCase):
         self.assertEqual(corpo["type"], "discover")
         self.assertEqual(corpo["dataState"], "all")
 
+    def test_recusa_rotulo_de_proveniencia_como_dataState(self):
+        # Mandar 'final_provisorio' na requisicao rende 400 da API. O erro tem de
+        # aparecer aqui, offline, e nao depois de gastar uma requisicao.
+        with self.assertRaises(ValueError) as ctx:
+            plan.montar_corpo(
+                "2026-01-01", "2026-01-01", ("date",), data_state=plan.ESTADO_PROVISORIO
+            )
+        self.assertIn("data_state_api", str(ctx.exception))
+
+    def test_recusa_estado_inventado(self):
+        with self.assertRaises(ValueError):
+            plan.montar_corpo("2026-01-01", "2026-01-01", ("date",), data_state="definitivo")
+
+
+class TestDataStateAPI(unittest.TestCase):
+    """A traducao entre o que gravamos e o que a API aceita."""
+
+    def test_final_passa_direto(self):
+        self.assertEqual(plan.data_state_api(plan.ESTADO_FINAL), "final")
+
+    def test_provisorio_e_pedido_como_final(self):
+        # Um dia que ainda assenta e pedido como qualquer outro: o rotulo
+        # provisorio diz respeito a LINHA GRAVADA, nao a requisicao.
+        self.assertEqual(plan.data_state_api(plan.ESTADO_PROVISORIO), "final")
+
+    def test_fresco_vira_all(self):
+        self.assertEqual(plan.data_state_api(plan.ESTADO_FRESCO), "all")
+
+    def test_tudo_que_sai_daqui_e_aceito_pela_api(self):
+        for estado in (plan.ESTADO_FINAL, plan.ESTADO_PROVISORIO, plan.ESTADO_FRESCO):
+            self.assertIn(plan.data_state_api(estado), plan.DATA_STATES_API, estado)
+
+    def test_estado_desconhecido_levanta(self):
+        with self.assertRaises(ValueError):
+            plan.data_state_api("quase_final")
+
 
 # ---------------------------------------------------------------------------
 # Truncamento
@@ -227,11 +263,53 @@ class TestMontarPassos(unittest.TestCase):
         self.assertEqual(passos[0].data_state, plan.ESTADO_FINAL)
 
     def test_lote_que_toca_a_ponta_e_provisorio(self):
-        # Conservador de propósito: um lote com qualquer dia ainda assentando é
-        # provisório como um todo.
         ponta = (HOJE - timedelta(days=4)).isoformat()
         passos = plan.montar_passos("total", "web", [ponta], hoje=HOJE)
         self.assertEqual(passos[0].data_state, plan.ESTADO_PROVISORIO)
+
+    def test_nenhum_lote_mistura_definitivo_com_provisorio(self):
+        # O backfill inteiro cabe num lote no grao `total`, e esse lote termina
+        # na ponta fresca. Sem o corte na fronteira, os 16 meses seriam gravados
+        # como provisorios e `dias_provisorios` acusaria a serie toda.
+        inicio, fim = plan.intervalo_datas(480, hoje=HOJE)
+        dias = plan.listar_dias(inicio, fim)
+        passos = plan.montar_passos("total", "web", dias, hoje=HOJE)
+
+        self.assertGreater(len(passos), 1)
+        for passo in passos:
+            esperado = plan.estado_do_dia(passo.dias[0], hoje=HOJE)
+            for dia in passo.dias:
+                self.assertEqual(plan.estado_do_dia(dia, hoje=HOJE), esperado, dia)
+            self.assertEqual(passo.data_state, esperado)
+
+    def test_o_corte_nao_perde_nem_duplica_dia(self):
+        inicio, fim = plan.intervalo_datas(480, hoje=HOJE)
+        dias = plan.listar_dias(inicio, fim)
+        cobertos = [
+            d for passo in plan.montar_passos("total", "web", dias, hoje=HOJE) for d in passo.dias
+        ]
+        self.assertEqual(sorted(cobertos), dias)
+        self.assertEqual(len(cobertos), len(set(cobertos)))
+
+    def test_a_maioria_dos_dias_fica_definitiva(self):
+        # O que o bug anterior custava: 471 dias rotulados errado.
+        inicio, fim = plan.intervalo_datas(480, hoje=HOJE)
+        passos = plan.montar_passos("total", "web", plan.listar_dias(inicio, fim), hoje=HOJE)
+        definitivos = sum(len(p.dias) for p in passos if p.data_state == plan.ESTADO_FINAL)
+        self.assertEqual(definitivos, 470)
+
+    def test_data_state_explicito_nao_e_dividido(self):
+        # --ponta-fresca pede `all` para a janela toda: nao ha fronteira a cortar.
+        inicio, fim = plan.intervalo_datas(480, hoje=HOJE)
+        passos = plan.montar_passos(
+            "total",
+            "web",
+            plan.listar_dias(inicio, fim),
+            hoje=HOJE,
+            data_state=plan.ESTADO_FRESCO,
+        )
+        self.assertEqual(len(passos), 1)
+        self.assertEqual(passos[0].data_state, plan.ESTADO_FRESCO)
 
 
 class TestEstimarRequisicoes(unittest.TestCase):

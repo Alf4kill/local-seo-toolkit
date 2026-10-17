@@ -73,7 +73,13 @@ class _FakeRequest:
 
 
 class _FakeService:
-    """Imita service.searchanalytics().query(...).execute(), gravando os corpos."""
+    """Imita service.searchanalytics().query(...).execute(), gravando os corpos.
+
+    Recusa o que a API real recusa. Um fake mais permissivo que a API deixa
+    passar bug que so aparece em producao: foi exatamente o que aconteceu com o
+    `dataState`, enviado com o rotulo de proveniencia 'final_provisorio' e
+    respondido com 400 pelo Google enquanto a suite inteira ficava verde.
+    """
 
     def __init__(self, responder):
         self._responder = responder
@@ -83,6 +89,14 @@ class _FakeService:
         return self
 
     def query(self, siteUrl, body):
+        estado = body.get("dataState")
+        if estado is not None and estado not in plan.DATA_STATES_API:
+            raise erro_http(
+                400,
+                f"Invalid value at 'data_state' "
+                f"(type.googleapis.com/google.searchconsole.v1."
+                f'searchanalytics.DataState), "{estado}"',
+            )
         self.bodies.append(dict(body))
         return _FakeRequest(self._responder(body, len(self.bodies) - 1))
 
