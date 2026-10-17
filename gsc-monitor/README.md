@@ -313,6 +313,7 @@ A CI ainda aplica um piso de cobertura (40%).
 gsc-monitor/
   app.py          ← entrada GUI (posicionamento/indexação)
   app_poda.py     ← entrada GUI: Plano de Poda
+  app_acervo.py   ← entrada GUI: Acervo histórico (fluxo guiado em 3 etapas)
   posicao.py      ← CLI: posicionamento
   main.py         ← CLI: indexação
   poda.py         ← CLI: Plano de Poda (gerar/compilar)
@@ -345,6 +346,9 @@ gsc-monitor/
     runner.py      ← execução em thread
     poda_window.py ← janela do Plano de Poda (app_poda.py)
     poda_runner.py ← execução em thread das etapas de poda
+    acervo_window.py ← janela do Acervo (app_acervo.py)
+    acervo_runner.py ← execução em thread dos comandos do acervo
+    terminal.py    ← paleta e colorização compartilhadas das 3 janelas
   tests/             ← suíte pytest: test_storage, test_cache, test_analytics,
                        test_ctr, test_classifier, test_sitemap, test_content_quality,
                        test_position_fetcher, test_log_analyzer, test_crawl_reporter,

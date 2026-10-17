@@ -32,21 +32,10 @@ from core.storage import latest_poda_csv
 from core.urls import normalize_domain
 from poda import PODA_DAYS_BACK
 
+from gui import terminal
 from gui.poda_runner import run_poda_task
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Paleta do terminal (mesma de gui/main_window.py)
-_T_BG = "#1e1e1e"
-_T_FG = "#d4d4d4"
-_T_FONT = ("Consolas", 9)
-_C_CACHE = "#4ec9b0"
-_C_ERRO = "#f44747"
-_C_HEADER = "#569cd6"
-_C_STORAGE = "#858585"
-_C_AUTH = "#c586c0"
-_C_OK = "#4ec9b0"
-_C_WARN = "#dcdcaa"
 
 
 class PodaWindow:
@@ -191,17 +180,17 @@ class PodaWindow:
 
         self._terminal = scrolledtext.ScrolledText(
             term_frame,
-            bg=_T_BG,
-            fg=_T_FG,
-            font=_T_FONT,
+            bg=terminal.BG,
+            fg=terminal.FG,
+            font=terminal.FONT,
             wrap=tk.WORD,
             state=tk.DISABLED,
             relief=tk.FLAT,
             borderwidth=0,
-            insertbackground=_T_FG,
+            insertbackground=terminal.FG,
         )
         self._terminal.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
-        self._setup_terminal_tags()
+        terminal.setup_tags(self._terminal)
 
         self._write_terminal(
             "  Plano de Poda está pronto.\n"
@@ -222,44 +211,8 @@ class PodaWindow:
         ttk.Label(inner, textvariable=self._status_var, foreground="#444444").pack(side="left")
         ttk.Label(inner, textvariable=self._time_var, foreground="#888888").pack(side="right")
 
-    def _setup_terminal_tags(self) -> None:
-        t = self._terminal
-        t.tag_configure("cache", foreground=_C_CACHE)
-        t.tag_configure("erro", foreground=_C_ERRO, font=(_T_FONT[0], _T_FONT[1], "bold"))
-        t.tag_configure("header", foreground=_C_HEADER, font=(_T_FONT[0], _T_FONT[1], "bold"))
-        t.tag_configure("storage", foreground=_C_STORAGE)
-        t.tag_configure("auth", foreground=_C_AUTH)
-        t.tag_configure("ok", foreground=_C_OK, font=(_T_FONT[0], _T_FONT[1], "bold"))
-        t.tag_configure("warn", foreground=_C_WARN)
-
-    @staticmethod
-    def _tag_for_line(line: str) -> "str | None":
-        stripped = line.strip()
-        low = line.lower()
-        if "[cache]" in low:
-            return "cache"
-        if "[erro" in low:
-            return "erro"
-        if "aviso" in low:
-            return "warn"
-        if stripped.startswith("=") or stripped.startswith("─") or stripped.startswith("-" * 10):
-            return "header"
-        if "[auth]" in low:
-            return "auth"
-        if "[storage]" in low:
-            return "storage"
-        if "concluído" in low or "concluido" in low:
-            return "ok"
-        return None
-
     def _write_terminal(self, text: str) -> None:
-        t = self._terminal
-        t.configure(state=tk.NORMAL)
-        for line in text.splitlines(keepends=True):
-            tag = self._tag_for_line(line)
-            t.insert(tk.END, line, tag) if tag else t.insert(tk.END, line)
-        t.see(tk.END)
-        t.configure(state=tk.DISABLED)
+        terminal.write(self._terminal, text)
 
     def _clear_terminal(self) -> None:
         self._terminal.configure(state=tk.NORMAL)

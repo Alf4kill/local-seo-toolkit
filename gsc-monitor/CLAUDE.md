@@ -71,6 +71,13 @@ py posicao.py --batch sites.txt --batch-report
 #   sites.txt: um domínio/linha, # comenta (modelo: sites.example.txt)
 #   --batch-report grava relatorios/_batch/YYYY-MM-DD_resumo.csv
 
+# Acervo historico (P7) — GUI guiada em 3 etapas: aferir, backfill, diario
+py app_acervo.py                                # janela dedicada
+py acervo.py aferir   --site www.exemplo.com.br # 1x por site, ~8 req, nao grava
+py acervo.py backfill --site www.exemplo.com.br # 480 dias (--dry-run mostra o plano)
+py acervo.py diario   --site www.exemplo.com.br # agende semanal: e o que acumula
+py acervo.py status   --site www.exemplo.com.br
+
 # CLI crawl budget (100% local, SEM cota — lê o access log do servidor)
 py logs.py --site www.exemplo.com.br --logs access.log [access.log.1.gz ...]
 #   --gsc  cruza com o último _posicao.json (money pages subcrawladas)
