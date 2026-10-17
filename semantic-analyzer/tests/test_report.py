@@ -103,7 +103,7 @@ class TestDiffHtml:
 
     def test_campos_none_do_llm_nao_quebram(self):
         """
-        Regressão (caso real, canilmansur via GUI): o LLM local devolveu
+        Regressão de caso real (via GUI): o LLM local devolveu
         keyword_alvo: null e o html.escape(None) explodia com AttributeError.
         dict.get(k, "") não protege — o default só vale se a chave NÃO existe.
         """

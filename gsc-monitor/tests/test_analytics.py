@@ -117,7 +117,7 @@ class TestHealthScore(unittest.TestCase):
 class TestComponentAlerts(unittest.TestCase):
     def test_composto_bom_com_ctr_critico_alerta(self):
         """
-        O caso real (canilmansur): composto "Bom"/"Excelente" mascarando CTR
+        Caso real de cliente: composto "Bom"/"Excelente" mascarando CTR
         péssimo. O alerta tem que apontar o CTR mesmo com o score geral alto.
         """
         # posição 1 (comp=100), indexação 100%, mas CTR 0.5% vs benchmark 28.5%
