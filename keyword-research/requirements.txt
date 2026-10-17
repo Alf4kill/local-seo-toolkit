@@ -1,0 +1,7 @@
+requests==2.33.1
+
+# pytrends — OPTIONAL, NOT installed by default.
+# Unofficial Google Trends scraper: fragile and prone to blocking. Used only
+# by the --trends flag for seed expansion (relative interest — never volume).
+# To enable:  pip install pytrends==4.9.2
+# (The code degrades gracefully: when missing, it warns and moves on.)

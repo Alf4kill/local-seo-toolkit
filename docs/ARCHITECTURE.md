@@ -24,10 +24,11 @@ Two hard constraints drive the architecture:
 
 ## High-level design
 
-The repository is two independent Python programs that share data through the
-filesystem. There is no shared package and no import edge between them — the only
-coupling is that `semantic-analyzer` reads JSON snapshots written by
-`gsc-monitor`.
+The repository is three independent Python programs that share data through the
+filesystem. There is no shared package and no import edge between them — the
+couplings are that `semantic-analyzer` reads JSON snapshots written by
+`gsc-monitor`, and `keyword-research` consumes GSC query CSVs exported by
+`gsc-monitor/exportar_keywords.py`.
 
 ```
 ┌──────────────────────────── gsc-monitor ────────────────────────────┐
@@ -216,6 +217,35 @@ running the model on the GPU. A `transformers` backend runs a small model on CPU
 with no server, intended only for testing. The pipeline runs the LLM *before*
 generating reports so its judgments land in the HTML.
 
+## keyword-research
+
+A 4-stage keyword research pipeline (spec: hybrid free-discovery + cheap
+DataForSEO validation) feeding blog content production for seotecnico.dev.br.
+Three CLI entry points, each runnable standalone and importable
+(`run_discovery`, `run_validation`, `run_serp_check` raise `PipelineError`
+instead of exiting):
+
+```
+descobrir.py  (Stage 1, free)    autocomplete + [trends] + [--gsc-csv]  -> {date}_descoberta.csv
+validar.py    (Stage 2, paid)    Labs expansion + Ads volume + filters  -> {date}_validacao.csv + {date}_stage3_input.csv
+serp.py       (Stage 3, paid)    standard-queue SERP top-10 + verdicts  -> {date}_serp_review.csv (analyst-editable)
+```
+
+- `core/` is pure logic (`normalize`, `filters`, `keyword_map`,
+  `serp_analysis`, `ledger`) plus the copied cache/storage patterns;
+  `fetchers/` holds the IO (`autocomplete`, `trends`, `dataforseo`).
+- **Cost control is structural**: `DataForSEOClient._request` checks the
+  monthly ledger cap *before* any HTTP (raising `BudgetExceededError`) and
+  appends every response's `cost` to `relatorios/_ledger/dataforseo_costs.csv`
+  *after*. `priority` and `include_clickstream_data` are never sent — pinned
+  by regression tests. Credentials come from env vars only (public repo).
+- Stage 3 uses the async standard queue: task ids persist in
+  `.cache/serp_pending.json`, so interrupted runs resume with `--fetch` and
+  paid SERPs are cached effectively forever (never re-bought).
+- Stages 1 and 4 lean on gsc-monitor's OAuth via the additive entry point
+  `gsc-monitor/exportar_keywords.py` ("ranked but weak" mining and per-URL
+  T+28d ground truth), keeping GSC credentials in one tool only.
+
 ## Data flow and integration points
 
 The integration between the tools is a one-way file handoff. `gsc-monitor` writes
@@ -231,19 +261,25 @@ Both tools cache aggressively and per-site:
 |------|----------------|------|
 | gsc-monitor | `relatorios/<site>/.cache/` | position 72h, queries 72h, inspect 24h, KG 7d, NLP 72h, date-trends 24h, page text 72h |
 | semantic-analyzer | `.cache/` | embeddings keyed by model+content (invalidate with `--no-cache`) |
+| keyword-research | `relatorios/<project>/.cache/` | autocomplete 7d, trends 24h, paid SERPs ~forever (never re-bought) |
 
 API errors are never cached. `--no-cache` forces fresh data in both tools. Cache
 TTL timestamps are UTC-aware, with backward compatibility for older naive caches.
 
 ## Key decisions and trade-offs
 
-- **Two programs, file-coupled, no shared package.** Keeps heavy ML deps out of
-  `gsc-monitor` and lets each tool evolve independently; the cost is a manual
-  file handoff. (The former `_normalize_domain` duplication has since been
-  centralized in `core/urls.py`.)
+- **Separate programs, file-coupled, no shared package.** Keeps heavy ML deps
+  out of `gsc-monitor` and lets each tool evolve independently; the cost is a
+  manual file handoff and some duplicated small utilities (cache/CSV patterns
+  are copied per tool by design). (The former `_normalize_domain` duplication
+  has since been centralized in gsc-monitor's `core/urls.py`.)
 - **Rule-based verdicts, optional local LLM.** Preserves analytical honesty and
-  the no-paid-API rule; the trade-off is more conservative output than a hosted
+  the no-paid-LLM rule; the trade-off is more conservative output than a hosted
   model might give.
+- **Free-tier rule scoped per tool.** `keyword-research` deliberately uses the
+  paid DataForSEO data API (< $5/month) because BR dev-niche keyword data has
+  no usable free source; the budget cap is enforced in code, not by discipline.
+  Paid LLMs stay off-limits everywhere.
 - **Opt-in expensive paths.** `--nlp`, `--trends`, `--llm`, `--linkgraph` are all
   off by default because they cost quota, time, or a running GPU server. Reports
   degrade gracefully — each section appears only if its data exists.

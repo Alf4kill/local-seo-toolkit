@@ -66,6 +66,27 @@ jobs:
       - name: Run tests
         run: python -m pytest --cov-fail-under=38
 
+  test-keyword-research:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: keyword-research
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+      # Deps leves: o pipeline usa só requests em runtime (pytrends é opcional
+      # e os testes mockam tudo — nenhuma chamada de rede na suíte).
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      # PISO de cobertura: trava a fonte no nível atual (medido em 91%). Sobe
+      # conforme novos testes entram; nunca desce sem decisão explícita.
+      - name: Run tests
+        run: python -m pytest --cov-fail-under=85
+
   # Varredura de vulnerabilidades nas dependências dos dois pacotes.
   # NÃO-BLOQUEANTE por enquanto: o `continue-on-error` fica em cada PASSO (não no
   # job), que é o que o GitHub respeita para o status do check — o passo reporta
@@ -86,3 +107,6 @@ jobs:
       - name: pip-audit (semantic-analyzer)
         continue-on-error: true
         run: pip-audit -r semantic-analyzer/requirements.txt -r semantic-analyzer/requirements-dev.txt
+      - name: pip-audit (keyword-research)
+        continue-on-error: true
+        run: pip-audit -r keyword-research/requirements.txt -r keyword-research/requirements-dev.txt

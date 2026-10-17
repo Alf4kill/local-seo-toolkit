@@ -1,6 +1,6 @@
 # Project status & roadmap — local-seo-toolkit
 
-**Last updated:** 2026-06-14 · **Status:** active, single-maintainer
+**Last updated:** 2026-07-15 · **Status:** active, single-maintainer
 
 The single source of truth for *where the project stands and what's next*. It
 consolidates and supersedes the earlier `IMPROVEMENT_ROADMAP.md`,
@@ -19,9 +19,9 @@ to operate it* see [`RUNBOOK.md`](RUNBOOK.md); for the per-change rationale log 
 
 | Dimension | State | Notes |
 |-----------|-------|-------|
-| Architecture | **Solid (A-)** | `core` (pure) / `fetchers` (IO) / `reporters` (output); two tools, file-coupled, no import edge. |
-| Feature coverage | **Mature** | Diagnosis is the validated strength; the measurement loop is built but data-starved. |
-| Tests | **390 passing** | 309 gsc-monitor + 81 semantic-analyzer, fully offline, CI coverage floor (40% / 38%). |
+| Architecture | **Solid (A-)** | `core` (pure) / `fetchers` (IO) / `reporters` (output); three tools, file-coupled, no import edge. |
+| Feature coverage | **Mature** | Diagnosis is the validated strength; the measurement loop is built but data-starved; keyword pipeline shipped (paid stages awaiting a DataForSEO account). |
+| Tests | **514 passing** | 318 gsc-monitor + 81 semantic-analyzer + 115 keyword-research, fully offline, CI coverage floor (40% / 38% / 85%). |
 | Lint / format | **Green** | `ruff check` + `ruff format --check` pinned to 0.15.16 in CI, pre-commit, dev reqs. |
 | Security hygiene | **Good** | Git-ignored credentials, blocking pre-commit secret scanner, `pip-audit` + Dependabot. |
 | Biggest gap | **Proof, not features** | No intervention has been executed *and measured* end-to-end yet. |
@@ -50,6 +50,8 @@ to operate it* see [`RUNBOOK.md`](RUNBOOK.md); for the per-change rationale log 
 | Local-LLM judgment + `--differentiate` | Works | Contract-safe alternative to 301s — keeps every page, gives each a distinct intent. |
 | Internal link graph (`--linkgraph`) | Works | Orphan / money-page detection, hub→spoke plan. |
 | Dashboards (HTML, both tools) | Mature | Self-contained, escaped, degrade gracefully. |
+| Keyword research pipeline (`keyword-research/`) | Built, **awaiting paid account** | 4 stages: free discovery (Autocomplete + GSC mining + optional Trends) works end-to-end today; DataForSEO validation + SERP spot-check are implemented and fully mock-tested, with structural cost guardrails (pre-flight budget cap, append-only ledger, `priority`/clickstream never sent). First real run needs a DataForSEO account (~$1 trial credit covers the smoke test). |
+| GSC keyword export (`exportar_keywords.py`) | Built | Additive gsc-monitor entry point: "ranked but weak" mining (Stage 1) + per-URL T+28d ground truth (Stage 4, forward-compatible with the planned `experimento.py`). |
 
 ### Engineering hardening (done)
 
@@ -152,7 +154,9 @@ Portfolio dashboard ────────► scale to 100+ sites (after one s
 Windows CI / lockfile ──────► fold in whenever adjacent code is touched
 ```
 
-**Standing rules for any change:** free tier / local only · honesty over
+**Standing rules for any change:** free tier / local only — scoped per tool:
+`keyword-research` alone may spend on the DataForSEO data API, under its coded
+budget cap; paid LLMs stay off-limits everywhere · honesty over
 confidence · run `py -m pytest` in each tool folder after changes · update tests
 *with* behavior, never silence them · add report toggles to `ReportOptions`, not to
 two signatures · diff a real generated artifact before claiming a reporter refactor

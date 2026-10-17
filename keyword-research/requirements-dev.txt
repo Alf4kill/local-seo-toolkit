@@ -1,0 +1,9 @@
+# Development / test dependencies only.
+# Install with: pip install -r requirements-dev.txt
+#
+# pytest is the single test runner (config in pytest.ini); ruff does lint +
+# format (config in ../ruff.toml). Runtime deps live in requirements.txt.
+
+pytest>=8.0
+pytest-cov>=5.0
+ruff==0.15.16

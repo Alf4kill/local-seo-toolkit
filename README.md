@@ -7,26 +7,32 @@ or local processing, and never depends on a paid LLM service. Analytical honesty
 is the guiding principle: verdicts are rule-based or come from a *local* model,
 never presented as more certain than the data supports.
 
-The repository holds two cooperating tools plus a few project-level notes:
+The repository holds three cooperating tools plus a few project-level notes:
 
 | Path | What it is |
 |------|------------|
 | [`gsc-monitor/`](gsc-monitor/) | Google Search Console analyzer — indexing + ranking reports, health score with component alerts, cannibalization + 301 consolidation plan, content-quality NLP, pruning ("Poda") plan, headless batch mode, Excel/HTML/CSV output, Tkinter GUI. |
 | [`semantic-analyzer/`](semantic-analyzer/) | Local embeddings tool that clusters a site's pages by *meaning* to surface duplicate/doorway content, with an optional local-LLM judgment layer and internal-link graph. |
-| [`ESTRATEGIA_TESTES.md`](ESTRATEGIA_TESTES.md) | Test-suite strategy and coverage map for both tools. |
+| [`keyword-research/`](keyword-research/) | 4-stage keyword research pipeline for blog content production — free discovery (Google Autocomplete, GSC mining, optional Trends), cheap DataForSEO validation with hard cost guardrails, SERP spot-check, post-publication GSC feedback loop. |
+| [`ESTRATEGIA_TESTES.md`](ESTRATEGIA_TESTES.md) | Test-suite strategy and coverage map for the tools. |
 | [`docs/`](docs/) | Project-wide documentation (this set). |
 
-## Why two tools
+## Why separate tools
 
-They answer two different questions about the same problem and deliberately stay
+They answer different questions about the same problem and deliberately stay
 decoupled. `gsc-monitor` sees cannibalization only through the *queries that
 already rank* in Search Console. `semantic-analyzer` compares the *content* of
 **every** page, so it catches duplicates that have no traffic yet. Keeping the
 heavy ML dependencies (`sentence-transformers` + `torch`) isolated in
-`semantic-analyzer` means `gsc-monitor` stays lightweight. The two cooperate
+`semantic-analyzer` means `gsc-monitor` stays lightweight. The tools cooperate
 through **files**, not imports: `semantic-analyzer` reads the `*_posicao.json`
 snapshots that `gsc-monitor` writes, so it can pick which duplicate page to keep
 based on real Search Console performance.
+
+`keyword-research` answers a third question — *what to write next* — and keeps
+the same file contract: `gsc-monitor/exportar_keywords.py` exports GSC query
+CSVs that the pipeline consumes via `--gsc-csv`, and post-publication exports
+feed new seeds back into discovery.
 
 ```
                  Google Search Console API (free tier)
@@ -58,6 +64,11 @@ cd gsc-monitor
 cd ..\semantic-analyzer
 pip install -r requirements.txt
 py analisar.py --primeweb "E:\projetos\backup\exemplo" --html clusters.html
+
+# keyword-research — free keyword discovery (Stage 1 needs no account at all)
+cd ..\keyword-research
+pip install -r requirements.txt
+py descobrir.py --projeto seotecnico.dev.br --seed "next.js seo"
 ```
 
 For the full setup-from-scratch walkthrough see [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
@@ -73,6 +84,7 @@ For the full setup-from-scratch walkthrough see [`docs/ONBOARDING.md`](docs/ONBO
 | [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) | See what's shipped, what's pending, and the prioritized tech-debt + roadmap backlog. |
 | [`gsc-monitor/README.md`](gsc-monitor/README.md) · [`gsc-monitor/CLAUDE.md`](gsc-monitor/CLAUDE.md) | Tool-specific setup and the deeper design/context log for gsc-monitor. |
 | [`semantic-analyzer/README.md`](semantic-analyzer/README.md) · [`semantic-analyzer/COMANDOS.md`](semantic-analyzer/COMANDOS.md) | Tool-specific overview and the copy-paste command cookbook. |
+| [`keyword-research/README.md`](keyword-research/README.md) | The 4-stage keyword pipeline: workflow, CSV contracts, DataForSEO cost guardrails, Radar-post checklist. |
 | [`ESTRATEGIA_TESTES.md`](ESTRATEGIA_TESTES.md) | Review or extend the test suites. |
 
 ## Ground rules
@@ -83,9 +95,13 @@ mind before changing anything:
 - **Local and permanent.** Nothing runs on the company server. A prior PHP
   project took down the Plesk panel, and the server's Python is old and frozen;
   running locally on Python 3.13 sidesteps all of that.
-- **Free tiers or local only.** No paid APIs — including hosted LLMs. Allowed:
-  Search Console, Knowledge Graph, Cloud Natural Language (free 5,000 units/mo),
-  and local models via Ollama/LM Studio. The bottleneck is **API quota**, not RAM.
+- **Free tiers or local only** — scoped per tool. `gsc-monitor` and
+  `semantic-analyzer` use no paid APIs at all (no hosted LLMs; Search Console,
+  Knowledge Graph, Cloud Natural Language free tier, local models via
+  Ollama/LM Studio — the bottleneck is **API quota**, not RAM).
+  `keyword-research` is the deliberate exception: it uses the paid DataForSEO
+  data API under hard budget guardrails (< $5/month, pre-flight cap check +
+  append-only cost ledger). Paid **LLMs** remain off-limits everywhere.
 - **Honesty over confidence.** Heuristics are never presented as certainty. The
   Cloud NLP API is not Google's ranking algorithm, and the tools say so.
 
@@ -104,10 +120,13 @@ Python 3.13 throughout. `gsc-monitor` uses `google-api-python-client`,
 `pytest` as the single runner.
 `semantic-analyzer` uses `numpy`, `sentence-transformers` (+`torch`),
 `scikit-learn`, and talks to a local LLM over an OpenAI-compatible HTTP API.
+`keyword-research` needs only `requests` (plus optional `pytrends`).
 
 > Code, comments, and generated reports are in **Portuguese**; this `docs/` set
-> is in English. The two tool READMEs and `COMANDOS.md` are in Portuguese and
-> remain the canonical tool-level references.
+> is in English. The gsc-monitor and semantic-analyzer READMEs and `COMANDOS.md`
+> are in Portuguese and remain the canonical tool-level references;
+> `keyword-research` follows its own spec — Portuguese CLI strings, English
+> docs and code comments.
 
 ## License
 

@@ -1,0 +1,7 @@
+# seeds.txt — uma seed por linha; linhas iniciadas com # sao comentarios.
+# Seeds sao termos curtos em pt-BR; descobrir.py expande cada uma via
+# Google Autocomplete (a-z + prefixos de pergunta + 1 nivel de recursao).
+next.js seo
+core web vitals
+sitemap next.js
+renderizacao no servidor

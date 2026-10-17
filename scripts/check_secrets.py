@@ -44,6 +44,12 @@ PATTERNS = [
     ("AWS access key id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("Slack token", re.compile(r"\bxox[baprs]-[0-9A-Za-z\-]{10,}\b")),
     ("Generic sk- key", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
+    # Hardcoded DataForSEO credential assignment (keyword-research uses env
+    # vars only). The [^'\"<] guard lets docs show `= "<placeholder>"` examples.
+    (
+        "DataForSEO credential",
+        re.compile(r"DATAFORSEO_(?:LOGIN|PASSWORD)\s*=\s*['\"][^'\"<]{4,}['\"]"),
+    ),
 ]
 
 # Paths excluded from the CONTENT scan: they legitimately contain the patterns
