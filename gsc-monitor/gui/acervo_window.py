@@ -360,9 +360,10 @@ class AcervoWindow:
         ttk.Label(
             cfg,
             text=(
-                "`image` pode ter volume comparável ao de `web` e cair diferente dele — "
-                "por isso vem marcado.\nOs outros quatro costumam vir vazios; confira com "
-                "o --dry-run antes de marcar."
+                "`image` pode ter volume comparável ao de `web` e cair diferente dele; "
+                "os outros quatro costumam vir vazios.\nRoda só o que está marcado — para "
+                "completar um acervo que já tem `web`, deixe SÓ `image`. Marcar os dois "
+                "não\nrefaz nada: o que já está no acervo não é re-pedido."
             ),
             foreground="#888888",
             justify="left",
