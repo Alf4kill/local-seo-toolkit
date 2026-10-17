@@ -983,26 +983,34 @@ def _secao_timeline(dados: dict) -> list:
 
 
 def _ausencia_de_tipos(dados: dict) -> list:
-    """O que este pacote NÃO cobre em matéria de `type` da Search Analytics.
+    """Quais `type` da Search Analytics este DOCUMENTO descreve, e quais não.
 
-    Medido em site real: `image` pode ter MAIS impressões que `web` e cair de
-    forma bem diferente dele. Um pacote de um tipo só é um recorte legítimo,
-    mas a análise tem de saber que é recorte — e, se o acervo tem outro tipo
-    coletado, que ele existe e está FORA deste snapshot.
+    Distinção que é fácil errar: o snapshot é cópia do banco INTEIRO, então as
+    linhas dos outros tipos coletados estão lá dentro, consultáveis. O que é de
+    um tipo só é este documento — as seções 3 a 7 (período, buracos, cobertura,
+    coortes) falam de `dados['tipo']` e de mais nenhum. Dizer que o outro tipo
+    está "fora do snapshot" seria falso, e mandaria a análise procurar noutro
+    lugar um dado que ela já tem na mão.
+
+    Importa porque `image` pode ter MAIS impressões que `web` e cair de forma
+    diferente dele: um recorte é legítimo, desde que a análise saiba que é um.
     """
     tipo = dados["tipo"]
     outros = dados.get("outros_tipos") or []
     naos = [t for t in plan.TIPOS_VALIDOS if t != tipo and t not in outros]
 
     linhas = [
-        f"- **Os outros `type` da Search Analytics.** Este pacote é só de `{tipo}`. "
-        f"`image` costuma ter volume comparável ao de `web` e pode cair de forma "
+        f"- **Os outros `type` da Search Analytics.** Este documento descreve só "
+        f"`{tipo}`: as seções 3 a 7 (período, buracos, cobertura, coortes) são todas "
+        f"dele. `image` pode ter volume comparável ao de `web` e cair de forma "
         f'diferente dele, então ler este recorte como "o site" erra por construção.',
     ]
     if outros:
         linhas.append(
-            f"  O acervo TEM `{'`, `'.join(outros)}` coletado, mas **fora deste "
-            f"snapshot**: gere o pacote daquele tipo com `--tipo {outros[0]}`."
+            f"  O acervo TEM `{'`, `'.join(outros)}` coletado, e as linhas desse tipo "
+            f"**estão neste snapshot** — toda tabela de fato tem a coluna `tipo`, então "
+            f"`WHERE tipo = '{outros[0]}'` as devolve. O que não existe aqui é a "
+            f"escrituração DELE em texto: para isso, `--tipo {outros[0]}`."
         )
     if naos:
         linhas.append(

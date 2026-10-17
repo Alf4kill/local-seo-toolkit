@@ -767,9 +767,12 @@ class TestAusenciaDeTipos(_PacoteBase):
     def _bloco(self):
         return self._dados_md().split("## 11.")[1]
 
-    def test_diz_de_qual_tipo_o_pacote_e(self):
+    def test_diz_de_qual_tipo_o_documento_e(self):
         bloco = self._bloco()
-        self.assertIn("Este pacote é só de `web`", bloco)
+        self.assertIn("Este documento descreve só `web`", bloco)
+        # Nomeia as seções que são de um tipo só, para não deixar dúvida sobre
+        # o que o recorte alcança.
+        self.assertIn("seções 3 a 7", bloco)
 
     def test_lista_os_tipos_nunca_coletados(self):
         bloco = self._bloco()
@@ -777,9 +780,11 @@ class TestAusenciaDeTipos(_PacoteBase):
         self.assertIn("image", bloco)
         self.assertIn("ausência de coleta", bloco)
 
-    def test_avisa_quando_outro_tipo_existe_no_banco_mas_fora_do_snapshot(self):
-        # O caso que engana: o acervo TEM image coletado, e o pacote de web não
-        # o contém. Sem este aviso o analista conclui que image não existe.
+    def test_diz_que_o_outro_tipo_coletado_esta_no_snapshot(self):
+        # O snapshot e copia do banco INTEIRO: as linhas de image estao nele.
+        # Afirmar que estao "fora" seria falso e mandaria a analise procurar
+        # noutro lugar um dado que ela ja tem — o que falta e a escrituracao
+        # DELE em texto, que sai no pacote `--tipo image`.
         store.gravar_lote(
             self.conn,
             grao="total",
@@ -791,8 +796,30 @@ class TestAusenciaDeTipos(_PacoteBase):
         )
         bloco = self._bloco()
         self.assertIn("O acervo TEM `image` coletado", bloco)
-        self.assertIn("fora deste", bloco)
+        self.assertIn("estão neste snapshot", bloco)
+        self.assertNotIn("fora deste snapshot", bloco)
+        self.assertIn("WHERE tipo = 'image'", bloco)
         self.assertIn("--tipo image", bloco)
+
+    def test_o_outro_tipo_realmente_esta_no_snapshot_gerado(self):
+        # A afirmacao acima tem de ser verdadeira no arquivo, nao so no texto.
+        store.gravar_lote(
+            self.conn,
+            grao="total",
+            propriedade=PROPRIEDADE,
+            tipo="image",
+            linhas=[_linha(DIAS[0], {})],
+            dias_do_lote=[DIAS[0]],
+            data_state="final",
+        )
+        self._gerar()
+        copia = sqlite3.connect(os.path.join(self.destino, "acervo.sqlite3"))
+        try:
+            tipos = {linha[0] for linha in copia.execute("SELECT DISTINCT tipo FROM fato_total")}
+        finally:
+            copia.close()
+        self.assertIn("image", tipos)
+        self.assertIn("web", tipos)
 
     def test_as_contagens_sao_do_tipo_do_pacote_e_nao_da_tabela_toda(self):
         # Com image no banco, a seção 1 de um pacote de web não pode somar as
