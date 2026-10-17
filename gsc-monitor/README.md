@@ -212,7 +212,9 @@ versionados (`*.log` está no `.gitignore`).
 Acumula a série **diária** do GSC no grão mais fino (dia × página × query) num
 SQLite por site, e gera o pacote que uma sessão de análise consome. **Não
 analisa nada** — sem score, sem veredito. A GUI (`py app_acervo.py`) explica o
-fluxo em 3 etapas; esta seção cobre o que só existe na CLI.
+fluxo em 3 etapas e tem a seleção de tipos de busca (`web` e `image` marcados),
+além de copiar o comando do agendador já com os tipos marcados. Esta seção cobre
+o que só existe na CLI: `reingerir`, `--graos`, `--batch` e o `pacote`.
 
 ```bash
 py acervo.py aferir   --site www.exemplo.com.br            # 1x por site, ~8 req, nada gravado

@@ -20,10 +20,12 @@ from config import ACERVO_DIAS_BACKFILL
 from gui import terminal
 from gui.acervo_runner import montar_args
 from gui.acervo_window import (
+    TIPOS_OFERECIDOS,
     comando_agendador,
     formatar_estado,
     montar_estado,
     proximo_passo,
+    tipos_para_args,
     validar_dias,
 )
 
@@ -290,6 +292,40 @@ class TestFormatarEstado:
         assert "ATENÇÃO" in formatar_estado(e)
 
 
+class TestTiposParaArgs:
+    def test_o_padrao_oferecido_e_web_e_image(self):
+        # `image` pode carregar volume comparável ao de `web` e cair diferente
+        # dele; a janela que coleta só `web` deixa metade do fato de fora.
+        marcados = dict(TIPOS_OFERECIDOS)
+        assert tipos_para_args(marcados) == "web,image"
+
+    def test_respeita_a_ordem_de_tipos_oferecidos(self):
+        # Não a ordem do dict de entrada: `total` de cada tipo é ingerido antes
+        # dos outros grãos daquele tipo, e a ordem estável deixa o log legível.
+        assert tipos_para_args({"image": True, "web": True}) == "web,image"
+
+    def test_um_tipo_so(self):
+        assert tipos_para_args({"web": True}) == "web"
+        assert tipos_para_args({"image": True}) == "image"
+
+    def test_inclui_os_tipos_raros_quando_marcados(self):
+        marcados = {t: True for t, _ in TIPOS_OFERECIDOS}
+        assert tipos_para_args(marcados) == "web,image,video,news,discover,googleNews"
+
+    def test_nenhum_marcado_levanta(self):
+        # Um clique que não faz nada e não diz por quê é pior que um erro.
+        with pytest.raises(ValueError):
+            tipos_para_args({t: False for t, _ in TIPOS_OFERECIDOS})
+        with pytest.raises(ValueError):
+            tipos_para_args({})
+
+    def test_tudo_que_sai_daqui_e_aceito_pela_CLI(self):
+        from core.warehouse import plan
+
+        for tipo, _ in TIPOS_OFERECIDOS:
+            assert tipo in plan.TIPOS_VALIDOS, tipo
+
+
 class TestComandoAgendador:
     def test_inclui_o_site_e_o_subcomando_diario(self):
         cmd = comando_agendador("www.exemplo.com.br")
@@ -297,6 +333,17 @@ class TestComandoAgendador:
         assert "--site www.exemplo.com.br" in cmd
         assert "acervo.py" in cmd
         assert "WEEKLY" in cmd
+
+    def test_leva_os_tipos_marcados(self):
+        cmd = comando_agendador("www.exemplo.com.br", "web,image")
+        assert "--tipos web,image" in cmd
+
+    def test_o_tipos_vai_sempre_mesmo_com_um_so(self):
+        # A armadilha que isto fecha: backfill de web,image com um diário
+        # agendado sem --tipos deixa a série de image parada, e a janela móvel
+        # de 16 meses vai comendo o que já foi coletado, sem erro e sem aviso.
+        assert "--tipos web" in comando_agendador("www.exemplo.com.br", "web")
+        assert "--tipos" in comando_agendador("www.exemplo.com.br")
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +392,26 @@ class TestMontarArgs:
     def test_modo_desconhecido_levanta(self):
         with pytest.raises(ValueError):
             montar_args("apagar_tudo", {"site": "x"})
+
+    def test_tipos_da_janela_chega_ao_namespace(self):
+        args = montar_args("backfill", {"site": "x", "tipos": "web,image"})
+        assert args.tipos == "web,image"
+
+    def test_a_CLI_resolve_os_tipos_que_a_janela_mandou(self):
+        # O elo que importa: a janela não reimplementa nada, ela monta o mesmo
+        # Namespace e a CLI é quem interpreta. Se este elo quebrar, a janela
+        # coletaria um conjunto de tipos diferente do que mostra marcado.
+        import acervo
+
+        args = montar_args("backfill", {"site": "x", "tipos": "web,image"})
+        assert acervo._parse_tipos(args) == ("web", "image")
+
+    def test_sem_tipos_a_janela_cai_no_web(self):
+        args = montar_args("backfill", {"site": "x"})
+        assert args.tipos is None
+        import acervo
+
+        assert acervo._parse_tipos(args) == ("web",)
 
 
 # ---------------------------------------------------------------------------

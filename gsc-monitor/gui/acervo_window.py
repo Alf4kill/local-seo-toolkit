@@ -39,6 +39,22 @@ _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Texto de cada etapa: o que faz, o que custa, por que existe. É o conteúdo
 # que transforma a janela num guia em vez de três botões soltos.
+# Os `type` que a janela oferece, e quais vêm marcados.
+#
+# `web` e `image` marcados porque, dependendo do nicho, `image` carrega volume
+# comparável ao de `web` e pode cair em magnitude e em data diferentes dele —
+# coletar só `web` deixa metade do fato de fora. Os outros quatro existem, vêm
+# vazios na maioria dos sites e ficam desmarcados para não gastar requisição à
+# toa; o `--dry-run` mostra o custo de cada um antes.
+TIPOS_OFERECIDOS = (
+    ("web", True),
+    ("image", True),
+    ("video", False),
+    ("news", False),
+    ("discover", False),
+    ("googleNews", False),
+)
+
 ETAPAS = (
     (
         "aferir",
@@ -50,15 +66,16 @@ ETAPAS = (
     (
         "backfill",
         "2 · Backfill",
-        "Traz os 480 dias (~16 meses) que a API ainda guarda. Retoma de onde parou se\n"
-        "for interrompido, e rodar de novo não duplica nada. Uma vez por site.",
+        "Traz os 480 dias (~16 meses) que a API ainda guarda, de cada tipo marcado.\n"
+        "Retoma de onde parou se for interrompido, e rodar de novo não duplica nada.\n"
+        "O custo e o tamanho do banco crescem com o número de tipos. Uma vez por site.",
     ),
     (
         "diario",
         "3 · Diário",
         "Re-busca a ponta que ainda assenta e incorpora os dias novos. É ESTE que faz\n"
         "os 16 meses virarem 2 anos — agende semanal. Sem ele, o backfill é uma foto e\n"
-        "a janela continua andando.",
+        "a janela continua andando. Tem de cobrir os MESMOS tipos do backfill.",
     ),
 )
 
@@ -66,6 +83,18 @@ ETAPAS = (
 # ---------------------------------------------------------------------------
 # Lógica pura — sem Tk, sem rede. É o que os testes exercitam.
 # ---------------------------------------------------------------------------
+
+
+def tipos_para_args(selecionados) -> str:
+    """{'web': True, 'image': True, ...} -> 'web,image', na ordem de TIPOS_OFERECIDOS.
+
+    Pelo menos um tipo tem de estar marcado: rodar sem nenhum não é um backfill
+    vazio, é um clique que não faz nada e não diz por quê.
+    """
+    pedidos = [tipo for tipo, _ in TIPOS_OFERECIDOS if selecionados.get(tipo)]
+    if not pedidos:
+        raise ValueError("marque pelo menos um tipo de busca")
+    return ",".join(pedidos)
 
 
 def validar_dias(texto: str, padrao: int = ACERVO_DIAS_BACKFILL) -> int:
@@ -162,12 +191,19 @@ def proximo_passo(estado: dict) -> str:
     return "diario"
 
 
-def comando_agendador(site: str) -> str:
-    """Linha do schtasks para agendar o diário semanal."""
+def comando_agendador(site: str, tipos: str = "web") -> str:
+    """Linha do schtasks para agendar o diário semanal.
+
+    `--tipos` vai SEMPRE, explícito, mesmo quando é só `web`. É aqui que mora a
+    armadilha: quem faz o backfill de `web,image` e agenda um diário sem
+    `--tipos` fica com a série de `image` parada, e a janela móvel de 16 meses
+    vai comendo o que já foi coletado — sem erro, sem aviso, até alguém notar
+    meses depois. O comando copiado espelha o que está marcado na janela.
+    """
     script = os.path.join(_BASE_DIR, "acervo.py")
     return (
         'schtasks /Create /TN "GSC Acervo Semanal" /SC WEEKLY /D MON /ST 07:00 '
-        f'/TR "py {script} diario --site {site}"'
+        f'/TR "py {script} diario --site {site} --tipos {tipos}"'
     )
 
 
@@ -278,7 +314,11 @@ class AcervoWindow:
         # Alta de propósito: as três etapas carregam a explicação da feature, e
         # a altura requerida pelo conteúdo é ~930px. Menos que isso comprime o
         # terminal na primeira abertura.
-        self.root.geometry("900x900")
+        # 955 porque o conteúdo pede 995px montado (medido com root.update()) e o
+        # terminal é a única parte que encolhe sem perder nada — ele tem weight=1
+        # e barra de rolagem. Mais que isso não cabe em tela de 1080p com barra
+        # de tarefas; menos corta a linha dos tipos de busca.
+        self.root.geometry("900x955")
         self.root.minsize(780, 700)
         self.root.configure(bg="#f0f0f0")
         self.root.columnconfigure(0, weight=1)
@@ -305,6 +345,29 @@ class AcervoWindow:
             row=0, column=2, sticky="e", pady=5
         )
 
+        # Os tipos valem para o backfill E para o diário, então moram aqui em
+        # cima, com o domínio, e não dentro de uma etapa: os dois têm de usar o
+        # MESMO conjunto, ou a série do tipo que faltar para de crescer.
+        ttk.Label(cfg, text="Tipos de busca:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        tipos_frame = ttk.Frame(cfg)
+        tipos_frame.grid(row=1, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(6, 0))
+        self._tipos_vars = {}
+        for tipo, marcado in TIPOS_OFERECIDOS:
+            var = tk.BooleanVar(value=marcado)
+            self._tipos_vars[tipo] = var
+            ttk.Checkbutton(tipos_frame, text=tipo, variable=var).pack(side="left", padx=(0, 10))
+
+        ttk.Label(
+            cfg,
+            text=(
+                "`image` pode ter volume comparável ao de `web` e cair diferente dele — "
+                "por isso vem marcado.\nOs outros quatro costumam vir vazios; confira com "
+                "o --dry-run antes de marcar."
+            ),
+            foreground="#888888",
+            justify="left",
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(2, 0))
+
         ttk.Label(
             cfg,
             text=(
@@ -314,7 +377,7 @@ class AcervoWindow:
             ),
             foreground="#888888",
             justify="left",
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
     def _build_steps_panel(self) -> None:
         steps = ttk.Frame(self._outer_frame)
@@ -488,7 +551,13 @@ class AcervoWindow:
         if not site:
             return
 
-        params = {"site": site, "dry_run": self._dry_run_var.get()}
+        try:
+            tipos = tipos_para_args({t: v.get() for t, v in self._tipos_vars.items()})
+        except ValueError as exc:
+            messagebox.showerror("Nenhum tipo marcado", str(exc).capitalize() + ".")
+            return
+
+        params = {"site": site, "tipos": tipos, "dry_run": self._dry_run_var.get()}
 
         if modo == "backfill":
             try:
@@ -514,13 +583,20 @@ class AcervoWindow:
         site = self._validated_site()
         if not site:
             return
-        comando = comando_agendador(site)
+        try:
+            tipos = tipos_para_args({t: v.get() for t, v in self._tipos_vars.items()})
+        except ValueError as exc:
+            messagebox.showerror("Nenhum tipo marcado", str(exc).capitalize() + ".")
+            return
+        comando = comando_agendador(site, tipos)
         self.root.clipboard_clear()
         self.root.clipboard_append(comando)
         self._write_terminal(
             "\n  Comando do agendador copiado para a área de transferência:\n"
             f"  {comando}\n"
-            "  Cole num PowerShell como administrador. Exige token.json já gerado.\n\n"
+            "  Cole num PowerShell como administrador. Exige token.json já gerado.\n"
+            f"  Ele agenda os tipos marcados AGORA ({tipos}). Se você mudar os tipos do\n"
+            "  backfill depois, copie de novo: o diário tem de cobrir os mesmos.\n\n"
         )
 
     def _start(self, modo: str, params: dict) -> None:
