@@ -44,6 +44,10 @@ def montar_args(modo: str, params: dict) -> argparse.Namespace:
         comando=modo,
         site=(params.get("site") or "").strip(),
         tipo=params.get("tipo", "web"),
+        # A janela coleta um tipo por vez (`tipo`); `tipos` existe no Namespace
+        # porque `_parse_tipos` o lê, e o contrato desta função é preencher TODO
+        # campo que algum comando lê, mesmo quando a janela não o oferece.
+        tipos=params.get("tipos") or None,
         graos=params.get("graos") or None,
         pausa=float(params.get("pausa", ACERVO_PAUSA_REQUISICAO)),
         dias=int(params.get("dias", ACERVO_DIAS_BACKFILL)),

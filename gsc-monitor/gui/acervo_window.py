@@ -89,24 +89,47 @@ def montar_estado(
 
     Pura de propósito: a janela só formata o que sai daqui, e o teste cobre a
     composição sem abrir uma janela.
+
+    `cobertura` tem uma linha por (tipo, grão, status) e `contagens` é
+    {grão: {tipo: linhas}}, então TUDO aqui é por tipo. Somar `web` com `image`
+    daria "962 dias" num acervo de 481 e uma cauda anonimizada que não é de
+    nenhum dos dois: são superfícies de busca diferentes, com volumes e quedas
+    diferentes, e o número agregado não significa nada.
     """
     dias_por_status: dict = {}
+    por_tipo: dict = {}
     primeiro = ultimo = None
     for linha in cobertura:
+        tipo = linha["tipo"]
         status = linha["status"]
-        dias_por_status[status] = dias_por_status.get(status, 0) + (linha["dias"] or 0)
+        dias = linha["dias"] or 0
+        dias_por_status[status] = dias_por_status.get(status, 0) + dias
+
+        info = por_tipo.setdefault(
+            tipo, {"dias_ok": 0, "primeiro": None, "ultimo": None, "cauda": None}
+        )
+        if status == "ok":
+            info["dias_ok"] = max(info["dias_ok"], dias)
+        if linha["primeiro"] and (info["primeiro"] is None or linha["primeiro"] < info["primeiro"]):
+            info["primeiro"] = linha["primeiro"]
+        if linha["ultimo"] and (info["ultimo"] is None or linha["ultimo"] > info["ultimo"]):
+            info["ultimo"] = linha["ultimo"]
+        # Cobertura de impressões do grão `query` = o tamanho da cauda que o GSC
+        # anonimiza. Não é defeito do acervo, e precisa ficar visível. Vem do
+        # grão `query` e não de `query_pagina`, que agrega `byPage` e por isso
+        # mistura a cauda com a sobreposição de URLs.
+        if linha["grao"] == "query" and linha.get("cobertura_media") is not None:
+            info["cauda"] = linha["cobertura_media"]
+
         if linha["primeiro"] and (primeiro is None or linha["primeiro"] < primeiro):
             primeiro = linha["primeiro"]
         if linha["ultimo"] and (ultimo is None or linha["ultimo"] > ultimo):
             ultimo = linha["ultimo"]
 
-    # Cobertura de impressões do grão `query` = o tamanho da cauda que o GSC
-    # anonimiza. Não é defeito do acervo, e precisa ficar visível.
-    cauda = None
-    for linha in cobertura:
-        if linha["grao"] == "query" and linha.get("cobertura_media") is not None:
-            cauda = linha["cobertura_media"]
-            break
+    linhas_por_tipo: dict = {}
+    for grao_contagens in contagens.values():
+        for tipo, n in grao_contagens.items():
+            linhas_por_tipo[tipo] = linhas_por_tipo.get(tipo, 0) + n
 
     return {
         "aferido": bool(afericao_em),
@@ -117,8 +140,12 @@ def montar_estado(
         "dias_ok": dias_por_status.get("ok", 0),
         "tem_buracos": bool(dias_por_status.get("teto") or dias_por_status.get("erro")),
         "provisorios": len(provisorios),
-        "linhas": sum(contagens.values()),
-        "cauda_anonimizada": cauda,
+        "linhas": sum(linhas_por_tipo.values()),
+        "tipos": por_tipo,
+        "linhas_por_tipo": linhas_por_tipo,
+        "cauda_anonimizada": (
+            next(iter(por_tipo.values()))["cauda"] if len(por_tipo) == 1 else None
+        ),
     }
 
 
@@ -149,16 +176,45 @@ def formatar_estado(estado: dict) -> str:
     if not estado["aferido"] and not estado["dias_ok"]:
         return "Acervo vazio para este domínio. Comece pela etapa 1."
 
+    tipos = estado.get("tipos") or {}
     partes = []
-    if estado["primeiro_dia"] and estado["ultimo_dia"]:
-        partes.append(f"período: {estado['primeiro_dia']} a {estado['ultimo_dia']}")
-    partes.append(f"{estado['dias_ok']} dias com dado")
-    partes.append(f"{estado['linhas']:,} linhas".replace(",", "."))
 
-    if estado["cauda_anonimizada"] is not None:
+    if len(tipos) > 1:
+        # Com mais de um tipo, NADA é somado: cada linha diz de qual superfície
+        # de busca ela fala. Um "período" ou uma "cauda" só, misturando web e
+        # image, seria número de coisa nenhuma.
+        for tipo, info in sorted(tipos.items()):
+            linha = f"{tipo}: "
+            if info["primeiro"] and info["ultimo"]:
+                linha += f"{info['primeiro']} a {info['ultimo']}, "
+            linha += f"{info['dias_ok']} dias, "
+            linha += f"{estado['linhas_por_tipo'].get(tipo, 0):,} linhas".replace(",", ".")
+            if info["cauda"] is not None:
+                linha += f", grão query vê {info['cauda']:.0%} das impressões"
+            partes.append(linha)
+    else:
+        if estado["primeiro_dia"] and estado["ultimo_dia"]:
+            partes.append(f"período: {estado['primeiro_dia']} a {estado['ultimo_dia']}")
+        # Dias DISTINTOS, não a soma dos grãos: `v_cobertura` tem uma linha por
+        # (tipo, grão, status), então somar daria "2886 dias" num acervo de 481
+        # (481 x 6 grãos). Os grãos cobrem os MESMOS dias — o máximo é o certo.
+        unico = next(iter(tipos.values()), None)
+        dias = unico["dias_ok"] if unico else estado["dias_ok"]
+        partes.append(f"{dias} dias com dado")
+        partes.append(f"{estado['linhas']:,} linhas".replace(",", "."))
+        if estado["cauda_anonimizada"] is not None:
+            partes.append(
+                f"o grão query vê {estado['cauda_anonimizada']:.0%} das impressões "
+                "(o resto o GSC anonimiza)"
+            )
+
+    if tipos and "image" not in tipos:
+        # Medido em site real: `image` pode ter MAIS impressões que `web` e cair
+        # de forma diferente. Não avisar aqui é deixar a janela afirmar que o
+        # acervo está completo quando falta metade.
         partes.append(
-            f"o grão query vê {estado['cauda_anonimizada']:.0%} das impressões "
-            "(o resto o GSC anonimiza)"
+            "só o tipo web foi coletado — image pode ter volume comparável; "
+            "para incluir: acervo.py backfill --tipos web,image"
         )
     if estado["provisorios"]:
         janela = GSC_DELAY_DAYS + ACERVO_ASSENTAMENTO_DIAS
@@ -183,7 +239,7 @@ def ler_estado(site: str) -> dict:
             store.ler_meta(conn, "afericao_em"),
             store.cobertura(conn, propriedade=propriedade),
             store.dias_provisorios(conn, propriedade=propriedade),
-            {g: store.contar_linhas(conn, s["tabela"]) for g, s in plan.GRAOS.items()},
+            {g: store.contar_linhas_por_tipo(conn, s["tabela"]) for g, s in plan.GRAOS.items()},
         )
     finally:
         conn.close()

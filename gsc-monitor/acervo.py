@@ -116,6 +116,31 @@ def _parse_graos(texto: "str | None") -> tuple:
     return pedidos
 
 
+def _parse_tipos(args) -> tuple:
+    """Os `type` da Search Analytics a ingerir nesta execução.
+
+    `--tipos web,image` para vários; `--tipo image` (singular) continua valendo
+    para um só — é o que a GUI monta e o que scripts antigos passam. Os dois são
+    mutuamente exclusivos no argparse, então não há como pedir coisas diferentes.
+
+    Vale lembrar por que mais de um tipo importa: `image` pode ter MAIS
+    impressões que `web` e cair de forma diferente dele. Coletar só `web` não é
+    um recorte menor do mesmo fato, é outro fato.
+    """
+    texto = getattr(args, "tipos", None)
+    if not texto:
+        return (getattr(args, "tipo", None) or "web",)
+    pedidos = tuple(dict.fromkeys(t.strip() for t in texto.split(",") if t.strip()))
+    invalidos = [t for t in pedidos if t not in plan.TIPOS_VALIDOS]
+    if invalidos:
+        raise AcervoError(
+            f"tipo(s) desconhecido(s): {', '.join(invalidos)}. "
+            f"Disponiveis: {', '.join(plan.TIPOS_VALIDOS)}. "
+            "Nao existe valor de IA: o relatorio de IA generativa do GSC e so da interface."
+        )
+    return pedidos or ("web",)
+
+
 def _checar_token() -> None:
     """Falha RÁPIDO se não há token.json utilizável.
 
@@ -220,57 +245,96 @@ def _coletar_urls(args) -> list:
 # ---------------------------------------------------------------------------
 
 
+def _plano_de_um_tipo(conn, *, propriedade: str, tipo: str, graos: tuple, dias_janela: list, args):
+    """(pendentes_por_grao, estimativa) de UM `type`. Pura quanto a rede."""
+    medias = store.media_linhas_por_dia(conn, propriedade=propriedade, tipo=tipo)
+    passos = []
+    pendentes_por_grao = {}
+    for grao in plan.graos_aplicaveis(graos, tipo):
+        pendentes = store.dias_pendentes(
+            conn,
+            propriedade=propriedade,
+            tipo=tipo,
+            grao=grao,
+            dias=dias_janela,
+            forcar=getattr(args, "forcar", False),
+        )
+        pendentes_por_grao[grao] = pendentes
+        passos.extend(plan.montar_passos(grao, tipo, pendentes))
+    return pendentes_por_grao, plan.estimar_requisicoes(passos, medias)
+
+
 def _imprimir_plano(site: str, graos: tuple, inicio: str, fim: str, args) -> dict:
-    """Monta e imprime o plano SEM tocar na API (nem constrói o `service`)."""
+    """Monta e imprime o plano SEM tocar na API (nem constrói o `service`).
+
+    Com vários `type`, o custo sai discriminado por tipo E somado: é a diferença
+    entre decidir coletar `image` sabendo o que custa e descobrir depois.
+    """
+    tipos = _parse_tipos(args)
     conn, propriedade = _abrir(site)
     try:
         dias_janela = plan.listar_dias(inicio, fim)
-        medias = store.media_linhas_por_dia(conn, propriedade=propriedade, tipo=args.tipo)
-        passos = []
-        pendentes_por_grao = {}
-        for grao in plan.graos_aplicaveis(graos, args.tipo):
-            pendentes = store.dias_pendentes(
+        por_tipo = {
+            tipo: _plano_de_um_tipo(
                 conn,
                 propriedade=propriedade,
-                tipo=args.tipo,
-                grao=grao,
-                dias=dias_janela,
-                forcar=getattr(args, "forcar", False),
+                tipo=tipo,
+                graos=graos,
+                dias_janela=dias_janela,
+                args=args,
             )
-            pendentes_por_grao[grao] = pendentes
-            passos.extend(plan.montar_passos(grao, args.tipo, pendentes))
-
-        estimativa = plan.estimar_requisicoes(passos, medias)
+            for tipo in tipos
+        }
     finally:
         conn.close()
 
     print("\n[acervo] PLANO (nenhuma chamada a API sera feita)")
     print(f"  propriedade: {propriedade}")
     print(f"  janela     : {inicio} a {fim} ({len(dias_janela)} dias)")
-    print(f"  tipo       : {args.tipo}")
-    print("")
-    print(f"  {'grao':<14}{'pend.':>7}{'lote':>7}{'lotes':>7}{'req.est.':>10}{'linhas est.':>14}")
-    print("  " + "-" * 59)
+    print(f"  tipo(s)    : {', '.join(tipos)}")
+
     vazio = {"lotes": 0, "requisicoes": 0, "linhas": 0}
-    for grao, pendentes in pendentes_por_grao.items():
-        info = estimativa["por_grao"].get(grao, vazio)
+    geral = {"requisicoes": 0, "linhas": 0, "medido": True}
+    for tipo, (pendentes_por_grao, estimativa) in por_tipo.items():
+        print("")
+        if len(tipos) > 1:
+            print(f"  type={tipo}")
         print(
-            f"  {grao:<14}{len(pendentes):>7}"
-            f"{plan.ACERVO_DIAS_LOTE.get(grao, 30):>7}{info['lotes']:>7}"
-            f"{info['requisicoes']:>10}{info['linhas'] or '?':>14}"
+            f"  {'grao':<14}{'pend.':>7}{'lote':>7}{'lotes':>7}{'req.est.':>10}{'linhas est.':>14}"
         )
-    print("  " + "-" * 59)
-    total = estimativa["total"]
-    print(f"  TOTAL: {total['requisicoes']} requisicoes, ~{total['linhas'] or '?'} linhas")
+        print("  " + "-" * 59)
+        for grao, pendentes in pendentes_por_grao.items():
+            info = estimativa["por_grao"].get(grao, vazio)
+            print(
+                f"  {grao:<14}{len(pendentes):>7}"
+                f"{plan.ACERVO_DIAS_LOTE.get(grao, 30):>7}{info['lotes']:>7}"
+                f"{info['requisicoes']:>10}{info['linhas'] or '?':>14}"
+            )
+        print("  " + "-" * 59)
+        total = estimativa["total"]
+        geral["requisicoes"] += total["requisicoes"]
+        geral["linhas"] += total["linhas"]
+        geral["medido"] = geral["medido"] and total["medido"]
+        rotulo = f"  SUBTOTAL {tipo}" if len(tipos) > 1 else "  TOTAL"
+        print(f"{rotulo}: {total['requisicoes']} requisicoes, ~{total['linhas'] or '?'} linhas")
+
+    if len(tipos) > 1:
+        print("")
+        print(
+            f"  TOTAL ({len(tipos)} tipos): {geral['requisicoes']} requisicoes, "
+            f"~{geral['linhas'] or '?'} linhas"
+        )
     origem = (
         "medido na escrituracao"
-        if total["medido"]
+        if geral["medido"]
         else "SEM medicao ainda (rode um backfill curto primeiro)"
     )
     print(f"  estimativa de linhas: {origem}")
-    segundos = total["requisicoes"] * (args.pausa + 1.5)
+    segundos = geral["requisicoes"] * (args.pausa + 1.5)
     print(f"  tempo estimado: ~{segundos / 60:.1f} min (pausa {args.pausa}s + latencia ~1.5s)\n")
-    return estimativa
+
+    unico = next(iter(por_tipo.values()))[1]
+    return unico if len(tipos) == 1 else {"por_tipo": por_tipo, "total": geral}
 
 
 # ---------------------------------------------------------------------------
@@ -324,30 +388,48 @@ def cmd_aferir(args) -> dict:
 
 
 def _ingerir(args, *, inicio: str, fim: str, graos: tuple, data_state=None, forcar=False) -> dict:
-    """Corpo comum de backfill e diario."""
+    """Corpo comum de backfill, diario e reingerir — um ou vários `type`.
+
+    Um `type` por vez, em sequência, e cada um com sua própria escrituração:
+    `tipo` está na chave primária de toda tabela de fato e da `ingestao`, logo o
+    mesmo dia e a mesma URL em `web` e em `image` são DUAS linhas, e ter `web`
+    ingerido não marca `image` como resolvido.
+
+    Uma `execucao` só cobre a passada inteira — ela registra o comando, não o
+    tipo —, e o resumo é a soma, com a quebra por tipo em `por_tipo`.
+    """
     from core.auth import build_service
     from fetchers.acervo_fetcher import ingerir_janela
 
+    tipos = _parse_tipos(args)
     _checar_token()
     conn, propriedade = _abrir(args.site)
     execucao_id = store.iniciar_execucao(conn, comando=args.comando, propriedade=propriedade)
     contador: dict = {}
+    resumo: dict = {"linhas": 0, "requisicoes": 0, "por_tipo": {}}
     try:
         service = build_service()
-        resumo = ingerir_janela(
-            service,
-            conn,
-            site_url=propriedade,
-            propriedade=propriedade,
-            inicio=inicio,
-            fim=fim,
-            graos=graos,
-            tipo=args.tipo,
-            data_state=data_state,
-            forcar=forcar,
-            pausa=args.pausa,
-            contador=contador,
-        )
+        for tipo in tipos:
+            if len(tipos) > 1:
+                print(f"\n[acervo] ── type={tipo} ──")
+            parcial = ingerir_janela(
+                service,
+                conn,
+                site_url=propriedade,
+                propriedade=propriedade,
+                inicio=inicio,
+                fim=fim,
+                graos=graos,
+                tipo=tipo,
+                data_state=data_state,
+                forcar=forcar,
+                pausa=args.pausa,
+                contador=contador,
+            )
+            resumo["por_tipo"][tipo] = parcial
+            resumo["linhas"] += parcial["linhas"]
+            resumo["requisicoes"] += parcial["requisicoes"]
+
         store.finalizar_execucao(
             conn,
             execucao_id,
@@ -356,8 +438,15 @@ def _ingerir(args, *, inicio: str, fim: str, graos: tuple, data_state=None, forc
             retentativas=contador.get("retentativas", 0),
             esperas_carga=contador.get("esperas_carga", 0),
         )
+        print("")
+        if len(tipos) > 1:
+            for tipo, parcial in resumo["por_tipo"].items():
+                print(
+                    f"[acervo] {tipo:11s} {parcial['linhas']} linhas, "
+                    f"{parcial['requisicoes']} requisicoes."
+                )
         print(
-            f"\n[acervo] {propriedade}: {resumo['linhas']} linhas gravadas em "
+            f"[acervo] {propriedade}: {resumo['linhas']} linhas gravadas em "
             f"{resumo['requisicoes']} requisicoes."
         )
         return resumo
@@ -412,21 +501,28 @@ def cmd_diario(args) -> dict:
 
 def cmd_reingerir(args) -> dict:
     graos = _parse_graos(args.graos)
+    tipos = _parse_tipos(args)
     conn, propriedade = _abrir(args.site)
+    # A limpeza é por tipo, como a escrituração: reingerir `image` não pode
+    # apagar o que já foi coletado de `web` no mesmo intervalo.
+    apagado = {"ingestao": 0, "fatos": 0}
     try:
-        apagado = store.apagar_intervalo(
-            conn,
-            propriedade=propriedade,
-            tipo=args.tipo,
-            graos=plan.graos_aplicaveis(graos, args.tipo),
-            de=args.de,
-            ate=args.ate,
-            apagar_fatos=args.apagar,
-        )
+        for tipo in tipos:
+            parcial = store.apagar_intervalo(
+                conn,
+                propriedade=propriedade,
+                tipo=tipo,
+                graos=plan.graos_aplicaveis(graos, tipo),
+                de=args.de,
+                ate=args.ate,
+                apagar_fatos=args.apagar,
+            )
+            apagado["ingestao"] += parcial["ingestao"]
+            apagado["fatos"] += parcial["fatos"]
     finally:
         conn.close()
     print(
-        f"[acervo] Escrituracao limpa: {apagado['ingestao']} dias, "
+        f"[acervo] Escrituracao limpa ({', '.join(tipos)}): {apagado['ingestao']} dias, "
         f"{apagado['fatos']} linhas de fato apagadas."
     )
     return _ingerir(args, inicio=args.de, fim=args.ate, graos=graos)
@@ -575,8 +671,10 @@ def cmd_status(args) -> dict:
         execucoes = store.ultimas_execucoes(conn, 3)
         afericao = store.ler_meta(conn, "afericao_em")
         contagens = {
-            grao: store.contar_linhas(conn, spec["tabela"]) for grao, spec in plan.GRAOS.items()
+            grao: store.contar_linhas_por_tipo(conn, spec["tabela"])
+            for grao, spec in plan.GRAOS.items()
         }
+        tipos_vistos = sorted({t for por_tipo in contagens.values() for t in por_tipo})
     finally:
         conn.close()
 
@@ -602,21 +700,37 @@ def cmd_status(args) -> dict:
         print("  token      : SEM refresh_token — vai exigir re-autorizacao manual")
 
     print("-" * 70)
-    print("  Cobertura (dias por grao e status)")
+    print("  Cobertura (dias por tipo, grao e status)")
     if not cobertura:
         print("    (vazio — nenhuma ingestao ainda)")
     for linha in cobertura:
         media = linha.get("cobertura_media")
         extra = f"  cobertura {media:.0%}" if media is not None else ""
         print(
-            f"    {linha['grao']:<14}{linha['status']:<14}{linha['dias']:>5} dias  "
-            f"{linha['primeiro']} a {linha['ultimo']}{extra}"
+            f"    {linha['tipo']:<11}{linha['grao']:<14}{linha['status']:<9}{linha['dias']:>5} dias"
+            f"  {linha['primeiro']} a {linha['ultimo']}{extra}"
         )
 
     print("-" * 70)
-    print("  Linhas por tabela de fato")
-    for grao, n in contagens.items():
-        print(f"    {grao:<14}{n:>12}")
+    # Por tipo, nunca somado: `web` e `image` sao superficies diferentes, e um
+    # total unico esconderia que uma delas nao foi coletada.
+    print("  Linhas por tabela de fato, por tipo")
+    if len(tipos_vistos) > 1:
+        print(f"    {'grao':<14}" + "".join(f"{t:>12}" for t in tipos_vistos))
+        for grao, por_tipo in contagens.items():
+            print(f"    {grao:<14}" + "".join(f"{por_tipo.get(t, 0):>12}" for t in tipos_vistos))
+    else:
+        rotulo = tipos_vistos[0] if tipos_vistos else "web"
+        for grao, por_tipo in contagens.items():
+            print(f"    {grao:<14}{por_tipo.get(rotulo, 0):>12}")
+    nao_coletados = [t for t in plan.TIPOS_VALIDOS if t not in tipos_vistos]
+    if nao_coletados:
+        print(
+            f"    NAO coletados: {', '.join(nao_coletados)} — zero linhas aqui nao e "
+            "ausencia de trafego,"
+        )
+        sugestao = ",".join([*tipos_vistos, nao_coletados[0]])
+        print(f"    e so ausencia de coleta. Para incluir: --tipos {sugestao}")
 
     print("-" * 70)
     janela = GSC_DELAY_DAYS + ACERVO_ASSENTAMENTO_DIAS
@@ -655,11 +769,23 @@ def parse_args(argv=None) -> argparse.Namespace:
         alvo.add_argument("--site", help="dominio ou sc-domain: a ingerir")
         if batch:
             alvo.add_argument("--batch", help="arquivo com um dominio por linha")
-        p.add_argument(
+        # Mutuamente exclusivos de propósito: `--tipo` (um só) é o que a GUI
+        # monta e o que scripts antigos passam, e `--tipos` é a forma nova.
+        # Permitir os dois na mesma linha deixaria expressável pedir coisas
+        # diferentes e ter de inventar uma regra de precedência.
+        quais = p.add_mutually_exclusive_group()
+        quais.add_argument(
             "--tipo",
             default="web",
             choices=plan.TIPOS_VALIDOS,
             help="`type` da Search Analytics (padrao: web)",
+        )
+        quais.add_argument(
+            "--tipos",
+            help=(
+                "varios `type` separados por virgula (ex. web,image). "
+                "`image` costuma ter volume comparavel ao de `web` e cair diferente dele"
+            ),
         )
         p.add_argument(
             "--graos",

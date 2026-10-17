@@ -364,12 +364,21 @@ def _tamanho_mb(caminho: str) -> float:
 
 def coletar(conn: sqlite3.Connection, *, propriedade: str, tipo: str) -> dict:
     """Lê do banco tudo que o DADOS.md precisa. Só leitura e contagem."""
-    contagens = {
-        grao: store.contar_linhas(conn, spec["tabela"]) for grao, spec in plan.GRAOS.items()
+    # Contagem DO TIPO deste pacote, não da tabela inteira: um acervo pode ter
+    # `web` e `image`, e somar os dois num pacote de `web` inflaria todo número
+    # da seção 1 com linhas de outra superfície de busca.
+    por_tipo = {
+        grao: store.contar_linhas_por_tipo(conn, spec["tabela"])
+        for grao, spec in plan.GRAOS.items()
     }
+    contagens = {grao: contagens_grao.get(tipo, 0) for grao, contagens_grao in por_tipo.items()}
+    outros_tipos = sorted(
+        {t for contagens_grao in por_tipo.values() for t in contagens_grao} - {tipo}
+    )
     return {
         "propriedade": propriedade,
         "tipo": tipo,
+        "outros_tipos": outros_tipos,
         "gerado_em": store.agora(),
         "versao_esquema": conn.execute("PRAGMA user_version").fetchone()[0],
         "meta": {
@@ -618,10 +627,10 @@ def _mecanismos_por_grao(dados: dict) -> list:
     """Uma linha por grão: onde a cobertura dele caiu e qual mecanismo explica.
 
     DERIVADO do que foi medido neste acervo, nunca escrito à mão. A versão
-    anterior citava a faixa medida no site-piloto (1,06 a 1,72) dentro do
-    documento de qualquer site — e um número de OUTRA propriedade no meio do
-    relatório desta é exatamente o tipo de coisa que a análise toma por fato
-    local. Agora o número é sempre o da propriedade do pacote.
+    anterior trazia a faixa medida no site-piloto dentro do documento de
+    qualquer site — e um número de OUTRA propriedade no meio do relatório desta
+    é exatamente o tipo de coisa que a análise toma por fato local. Agora o
+    número é sempre o da propriedade do pacote.
     """
     if not dados["agregacao"]:
         return [
@@ -973,6 +982,36 @@ def _secao_timeline(dados: dict) -> list:
     return linhas
 
 
+def _ausencia_de_tipos(dados: dict) -> list:
+    """O que este pacote NÃO cobre em matéria de `type` da Search Analytics.
+
+    Medido em site real: `image` pode ter MAIS impressões que `web` e cair de
+    forma bem diferente dele. Um pacote de um tipo só é um recorte legítimo,
+    mas a análise tem de saber que é recorte — e, se o acervo tem outro tipo
+    coletado, que ele existe e está FORA deste snapshot.
+    """
+    tipo = dados["tipo"]
+    outros = dados.get("outros_tipos") or []
+    naos = [t for t in plan.TIPOS_VALIDOS if t != tipo and t not in outros]
+
+    linhas = [
+        f"- **Os outros `type` da Search Analytics.** Este pacote é só de `{tipo}`. "
+        f"`image` costuma ter volume comparável ao de `web` e pode cair de forma "
+        f'diferente dele, então ler este recorte como "o site" erra por construção.',
+    ]
+    if outros:
+        linhas.append(
+            f"  O acervo TEM `{'`, `'.join(outros)}` coletado, mas **fora deste "
+            f"snapshot**: gere o pacote daquele tipo com `--tipo {outros[0]}`."
+        )
+    if naos:
+        linhas.append(
+            f"  Nunca coletados: `{'`, `'.join(naos)}`. Zero neles não é ausência de "
+            f"tráfego, é ausência de coleta (`--tipos {tipo},{naos[0]}`)."
+        )
+    return linhas
+
+
 def _secao_ausencias(dados: dict) -> list:
     return [
         "## 11. O que NÃO está aqui",
@@ -987,6 +1026,7 @@ def _secao_ausencias(dados: dict) -> list:
         "- **A dimensão `searchAppearance`** (grão de 2 etapas, fase P7.4). "
         "`dim_aparencia_vista` registra os valores já VISTOS, mas `fato_aparencia` está "
         "vazia.",
+        *_ausencia_de_tipos(dados),
         "- **GA4, sessões, conversões, receita.** Outra fonte, outro fuso (ver ressalva 3).",
         "- **Core Web Vitals / PageSpeed / CrUX.**",
         "- **Crawl de links internos, HTML das páginas, texto dos artigos.** O acervo não "

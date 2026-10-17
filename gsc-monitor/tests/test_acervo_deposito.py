@@ -364,6 +364,116 @@ class TestCobertura(_BancoTemp):
 
 
 # ---------------------------------------------------------------------------
+# Separação por `type`
+# ---------------------------------------------------------------------------
+
+
+class TestSeparacaoPorTipo(_BancoTemp):
+    """`web` e `image` são superfícies de busca DIFERENTES, no mesmo banco.
+
+    Medido em site real: `image` pode ter mais impressões que `web` e cair de
+    forma bem diferente dele. Se os dois se misturarem em qualquer lugar — chave,
+    régua da cobertura ou escrituração — os dois ficam errados de uma vez.
+    """
+
+    def _gravar(self, tipo, *, grao, linhas, cobertura=None):
+        store.gravar_lote(
+            self.conn,
+            grao=grao,
+            propriedade=PROPRIEDADE,
+            tipo=tipo,
+            linhas=linhas,
+            dias_do_lote=[ANTIGO],
+            data_state="final",
+            cobertura=cobertura,
+        )
+
+    def test_mesmo_dia_e_mesma_url_em_dois_tipos_sao_duas_linhas(self):
+        for tipo in ("web", "image"):
+            self._gravar(
+                tipo,
+                grao="pagina",
+                linhas=[_linha(ANTIGO, {"pagina_id": "https://www.exemplo.com.br/x"})],
+            )
+        self.assertEqual(store.contar_linhas(self.conn, "fato_pagina"), 2)
+        # E a URL é internada UMA vez: a dimensão não é por tipo.
+        self.assertEqual(store.contar_linhas(self.conn, "dim_pagina"), 1)
+        por_tipo = store.contar_linhas_por_tipo(self.conn, "fato_pagina")
+        self.assertEqual(por_tipo, {"image": 1, "web": 1})
+
+    def test_a_regua_da_cobertura_nao_cruza_tipos(self):
+        # O erro mais perigoso desta fase: medir as impressões de `image` contra
+        # o total de `web` daria uma cobertura que não é de nenhum dos dois.
+        self._gravar("web", grao="total", linhas=[_linha(ANTIGO, {}, impressions=1000)])
+        self._gravar("image", grao="total", linhas=[_linha(ANTIGO, {}, impressions=4000)])
+
+        self.assertEqual(
+            store.impressoes_total_por_dia(
+                self.conn, propriedade=PROPRIEDADE, tipo="web", dias=[ANTIGO]
+            ),
+            {ANTIGO: 1000},
+        )
+        self.assertEqual(
+            store.impressoes_total_por_dia(
+                self.conn, propriedade=PROPRIEDADE, tipo="image", dias=[ANTIGO]
+            ),
+            {ANTIGO: 4000},
+        )
+
+    def test_cobertura_gravada_e_a_do_proprio_tipo(self):
+        self._gravar("web", grao="total", linhas=[_linha(ANTIGO, {}, impressions=1000)])
+        self._gravar("image", grao="total", linhas=[_linha(ANTIGO, {}, impressions=4000)])
+        for tipo, impressoes in (("web", 300), ("image", 2000)):
+            totais = store.impressoes_total_por_dia(
+                self.conn, propriedade=PROPRIEDADE, tipo=tipo, dias=[ANTIGO]
+            )
+            linhas = [_linha(ANTIGO, {"query_id": "kw a"}, impressions=impressoes)]
+            self._gravar(
+                tipo,
+                grao="query",
+                linhas=linhas,
+                cobertura=rows.cobertura_por_dia(rows.impressoes_por_dia(linhas), totais),
+            )
+        medidas = {
+            linha["tipo"]: linha["cobertura_impressoes"]
+            for linha in self.conn.execute(
+                "SELECT tipo, cobertura_impressoes FROM ingestao WHERE grao='query'"
+            )
+        }
+        # 300/1000 e 2000/4000 — e NÃO 300/4000 nem 2000/1000.
+        self.assertAlmostEqual(medidas["web"], 0.3)
+        self.assertAlmostEqual(medidas["image"], 0.5)
+
+    def test_resume_e_por_tipo(self):
+        # Ter `web` ingerido não pode marcar `image` como resolvido: seriam 16
+        # meses de uma superfície inteira silenciosamente não coletados.
+        self._gravar("web", grao="pagina", linhas=[_linha(ANTIGO, {"pagina_id": "/x"})])
+        comuns = {"propriedade": PROPRIEDADE, "grao": "pagina", "dias": [ANTIGO]}
+        self.assertEqual(store.dias_pendentes(self.conn, tipo="web", **comuns), [])
+        self.assertEqual(store.dias_pendentes(self.conn, tipo="image", **comuns), [ANTIGO])
+
+    def test_apagar_intervalo_de_um_tipo_nao_toca_no_outro(self):
+        for tipo in ("web", "image"):
+            self._gravar(tipo, grao="pagina", linhas=[_linha(ANTIGO, {"pagina_id": "/x"})])
+        store.apagar_intervalo(
+            self.conn,
+            propriedade=PROPRIEDADE,
+            tipo="image",
+            graos=("pagina",),
+            de=ANTIGO,
+            ate=ANTIGO,
+            apagar_fatos=True,
+        )
+        self.assertEqual(store.contar_linhas_por_tipo(self.conn, "fato_pagina"), {"web": 1})
+
+    def test_cobertura_reporta_os_tipos_separados(self):
+        for tipo in ("web", "image"):
+            self._gravar(tipo, grao="total", linhas=[_linha(ANTIGO, {})])
+        tipos = {linha["tipo"] for linha in store.cobertura(self.conn, propriedade=PROPRIEDADE)}
+        self.assertEqual(tipos, {"web", "image"})
+
+
+# ---------------------------------------------------------------------------
 # Views
 # ---------------------------------------------------------------------------
 

@@ -751,6 +751,18 @@ def contar_linhas(conn: sqlite3.Connection, tabela: str) -> int:
     return int(conn.execute(f"SELECT COUNT(*) AS n FROM {tabela}").fetchone()["n"])
 
 
+def contar_linhas_por_tipo(conn: sqlite3.Connection, tabela: str) -> dict:
+    """{tipo: linhas} de uma tabela de fato.
+
+    Com mais de um `type` no acervo, a contagem total da tabela soma coisas que
+    NÃO são comparáveis — `web` e `image` são superfícies de busca diferentes,
+    com volumes e quedas diferentes. Um número só, sem dizer que mistura os
+    dois, é pior que não mostrar número.
+    """
+    sql = f"SELECT tipo, COUNT(*) AS n FROM {tabela} GROUP BY tipo ORDER BY tipo"
+    return {linha["tipo"]: int(linha["n"]) for linha in conn.execute(sql)}
+
+
 def dias_provisorios(conn: sqlite3.Connection, *, propriedade: str) -> list:
     """Dias gravados como ainda assentando — a ponta da série, instável.
 

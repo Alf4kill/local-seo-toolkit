@@ -403,13 +403,13 @@ class TestCoberturaEAgregacao(_PacoteBase):
         self.assertNotIn("1.290", self.bloco)
 
     def test_a_faixa_medida_e_a_desta_propriedade_nao_a_de_outra(self):
-        # Regressão: a primeira versão citava a faixa medida no site-piloto
-        # (1,06 a 1,72) dentro do DADOS.md de QUALQUER site. Um número de outra
-        # propriedade no meio deste relatório é lido como fato local.
+        # Regressão: a primeira versão trazia a faixa medida no site-piloto
+        # dentro do DADOS.md de QUALQUER site. Um número de outra propriedade no
+        # meio deste relatório é lido como fato local. A faixa impressa tem de
+        # ser EXATAMENTE a da fixture — é o que prova que foi derivada daqui.
         self.assertIn("NESTE acervo", self.bloco)
         self.assertIn("`pagina` (`byPage`): 1,060 a 1,290", self.bloco)
-        self.assertNotIn("1,06 a 1,72", self.bloco)
-        self.assertNotIn("0,25 a 0,79", self.bloco)
+        self.assertIn("`query` (`byProperty`): 0,250 a 0,610", self.bloco)
 
     def test_cada_grao_vem_com_o_mecanismo_que_o_explica(self):
         # `pagina` é byPage sem query: só o mecanismo da agregação age.
@@ -754,6 +754,65 @@ class TestEventosEUrls(_PacoteBase):
 # ---------------------------------------------------------------------------
 # consultas.sql — tem de EXECUTAR, não só existir
 # ---------------------------------------------------------------------------
+
+
+class TestAusenciaDeTipos(_PacoteBase):
+    """O pacote é de UM `type`; a análise tem de saber que é recorte.
+
+    Medido em site real: `image` pode ter MAIS impressões que `web` e cair de
+    forma diferente dele. Ler um pacote de `web` como "o site" erra por
+    construção, e a seção 11 existe para impedir exatamente isso.
+    """
+
+    def _bloco(self):
+        return self._dados_md().split("## 11.")[1]
+
+    def test_diz_de_qual_tipo_o_pacote_e(self):
+        bloco = self._bloco()
+        self.assertIn("Este pacote é só de `web`", bloco)
+
+    def test_lista_os_tipos_nunca_coletados(self):
+        bloco = self._bloco()
+        self.assertIn("Nunca coletados", bloco)
+        self.assertIn("image", bloco)
+        self.assertIn("ausência de coleta", bloco)
+
+    def test_avisa_quando_outro_tipo_existe_no_banco_mas_fora_do_snapshot(self):
+        # O caso que engana: o acervo TEM image coletado, e o pacote de web não
+        # o contém. Sem este aviso o analista conclui que image não existe.
+        store.gravar_lote(
+            self.conn,
+            grao="total",
+            propriedade=PROPRIEDADE,
+            tipo="image",
+            linhas=[_linha(DIAS[0], {})],
+            dias_do_lote=[DIAS[0]],
+            data_state="final",
+        )
+        bloco = self._bloco()
+        self.assertIn("O acervo TEM `image` coletado", bloco)
+        self.assertIn("fora deste", bloco)
+        self.assertIn("--tipo image", bloco)
+
+    def test_as_contagens_sao_do_tipo_do_pacote_e_nao_da_tabela_toda(self):
+        # Com image no banco, a seção 1 de um pacote de web não pode somar as
+        # linhas de image: seriam números de outra superfície de busca.
+        antes = pacote.coletar(self.conn, propriedade=PROPRIEDADE, tipo="web")["contagens"]
+        store.gravar_lote(
+            self.conn,
+            grao="pagina",
+            propriedade=PROPRIEDADE,
+            tipo="image",
+            linhas=[_linha(DIAS[0], {"pagina_id": URL_VELHA})],
+            dias_do_lote=[DIAS[0]],
+            data_state="final",
+        )
+        depois = pacote.coletar(self.conn, propriedade=PROPRIEDADE, tipo="web")["contagens"]
+        self.assertEqual(antes["pagina"], depois["pagina"])
+        self.assertEqual(
+            pacote.coletar(self.conn, propriedade=PROPRIEDADE, tipo="image")["contagens"]["pagina"],
+            1,
+        )
 
 
 class TestConsultas(_PacoteBase):

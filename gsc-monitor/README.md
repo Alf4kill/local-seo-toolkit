@@ -207,6 +207,62 @@ O log fica **no servidor**; a análise roda **local**. Baixe o arquivo antes:
 Copie para a máquina local e aponte `--logs` para o arquivo. Os logs **não** são
 versionados (`*.log` está no `.gitignore`).
 
+### CLI — Acervo histórico (extração para análise posterior)
+
+Acumula a série **diária** do GSC no grão mais fino (dia × página × query) num
+SQLite por site, e gera o pacote que uma sessão de análise consome. **Não
+analisa nada** — sem score, sem veredito. A GUI (`py app_acervo.py`) explica o
+fluxo em 3 etapas; esta seção cobre o que só existe na CLI.
+
+```bash
+py acervo.py aferir   --site www.exemplo.com.br            # 1x por site, ~8 req, nada gravado
+py acervo.py backfill --site www.exemplo.com.br            # 1x por site, os ~16 meses que a API guarda
+py acervo.py diario   --site www.exemplo.com.br            # SEMANAL, para sempre
+py acervo.py pacote   --site www.exemplo.com.br            # snapshot + DADOS.md
+```
+
+O `diario` é a parte que **não pode falhar**: a retenção da API é uma janela
+móvel de ~16 meses, então cada semana sem rodar apaga para sempre a semana mais
+antiga. É ele que faz 16 meses virarem 2 anos.
+
+```bash
+schtasks /Create /TN "GSC Acervo Semanal" /SC WEEKLY /D MON /ST 07:00 /TR "cmd /c cd /d E:\projetos\projetoprst.com.br\gsc-monitor && py acervo.py diario --site www.exemplo.com.br"
+```
+
+#### `--tipos`: `web` é menos da metade do que o site recebe
+
+A Search Analytics separa as superfícies de busca em `type`, e o padrão de todo
+comando é **só `web`**. Dependendo do nicho, `image` pode ter **mais impressões
+que `web`** — e cair em magnitude e em data diferentes dele, inclusive sem a
+quebra brusca que o `web` sofreu. Nesses casos, coletar só `web` não é um
+recorte menor do mesmo fato: é outro fato. É também o que permite distinguir
+queda específica de uma superfície de punição de site inteiro, já que uma
+demoção de domínio derrubaria as duas. Rode o `--dry-run` com `--tipos` no seu
+site para medir em vez de supor.
+
+```bash
+py acervo.py backfill --site www.exemplo.com.br --tipos web,image
+py acervo.py diario   --site www.exemplo.com.br --tipos web,image
+py acervo.py backfill --site www.exemplo.com.br --tipos web,image --dry-run   # custo por tipo
+```
+
+`--tipo` (singular) continua valendo para um tipo só; os dois são mutuamente
+exclusivos. `video`, `news`, `discover` e `googleNews` existem e costumam vir
+vazios — o `--dry-run` mostra o custo antes de gastar requisição.
+
+> **A armadilha:** `image` **não** entra no default, de propósito — ligá-lo
+> dobraria o custo e o tamanho do banco de quem já tem tarefa agendada, sem
+> pedir. Mas se você fizer o `backfill` com `--tipos web,image` e agendar o
+> `diario` **sem** `--tipos`, a série de `image` para de crescer e a janela
+> móvel vai comendo o que já foi coletado. **O `--tipos` do `diario` tem de
+> espelhar o do `backfill`.** O `status` lista a cobertura por tipo e nomeia os
+> que nunca foram coletados, justamente para isso aparecer.
+
+O pacote é de **um** tipo (`pacote --tipo image` para o outro), e a seção 11 do
+`DADOS.md` declara qual tipo ele cobre, quais existem no acervo e estão fora
+dele, e quais nunca foram coletados — para ausência de coleta nunca ser lida
+como ausência de tráfego.
+
 ---
 
 ## Relatórios gerados

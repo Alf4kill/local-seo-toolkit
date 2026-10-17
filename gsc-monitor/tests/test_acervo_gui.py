@@ -35,14 +35,25 @@ def _cobertura(
     primeiro="2026-01-01",
     ultimo="2026-01-10",
     cobertura_media=None,
+    tipo="web",
 ):
+    """Uma linha de `v_cobertura`, que tem `tipo` — como o banco de verdade."""
     return {
+        "tipo": tipo,
         "grao": grao,
         "status": status,
         "dias": dias,
         "primeiro": primeiro,
         "ultimo": ultimo,
         "cobertura_media": cobertura_media,
+    }
+
+
+def _contagens(**por_grao):
+    """{grao: {tipo: linhas}} a partir de {grao: linhas} ou {grao: {tipo: n}}."""
+    return {
+        grao: (valor if isinstance(valor, dict) else {"web": valor})
+        for grao, valor in por_grao.items()
     }
 
 
@@ -122,8 +133,110 @@ class TestMontarEstado:
         assert e["cauda_anonimizada"] == 0.42
 
     def test_linhas_somam_todas_as_tabelas(self):
-        e = montar_estado(None, [], [], {"total": 10, "pagina": 500, "query": 900})
+        e = montar_estado(None, [], [], _contagens(total=10, pagina=500, query=900))
         assert e["linhas"] == 1410
+
+
+class TestEstadoPorTipo:
+    """Com dois tipos, nada pode ser somado — nem dias, nem cauda, nem linhas."""
+
+    def _dois_tipos(self):
+        return montar_estado(
+            "2026-01-01T00:00:00+00:00",
+            [
+                _cobertura(
+                    tipo="web", grao="total", dias=481, primeiro="2025-06-21", ultimo="2026-10-14"
+                ),
+                _cobertura(
+                    tipo="web",
+                    grao="query",
+                    dias=481,
+                    primeiro="2025-06-21",
+                    ultimo="2026-10-14",
+                    cobertura_media=0.61,
+                ),
+                _cobertura(
+                    tipo="image", grao="total", dias=30, primeiro="2026-09-15", ultimo="2026-10-14"
+                ),
+                _cobertura(
+                    tipo="image",
+                    grao="query",
+                    dias=30,
+                    primeiro="2026-09-15",
+                    ultimo="2026-10-14",
+                    cobertura_media=0.88,
+                ),
+            ],
+            [],
+            # Valores inventados, redondos de propósito: nada aqui vem de dado
+            # real de cliente (o repo é público).
+            {"total": {"web": 400, "image": 30}, "query": {"web": 9000, "image": 700}},
+        )
+
+    def test_dias_nao_somam_entre_tipos(self):
+        # 481 dias de web + 481 de image NÃO são 962 dias de acervo.
+        estado = self._dois_tipos()
+        assert estado["tipos"]["web"]["dias_ok"] == 481
+        assert estado["tipos"]["image"]["dias_ok"] == 30
+
+    def test_cada_tipo_tem_seu_periodo(self):
+        estado = self._dois_tipos()
+        assert estado["tipos"]["web"]["primeiro"] == "2025-06-21"
+        assert estado["tipos"]["image"]["primeiro"] == "2026-09-15"
+
+    def test_cada_tipo_tem_sua_cauda(self):
+        estado = self._dois_tipos()
+        assert estado["tipos"]["web"]["cauda"] == 0.61
+        assert estado["tipos"]["image"]["cauda"] == 0.88
+
+    def test_nao_ha_cauda_agregada_com_dois_tipos(self):
+        # Uma cauda só, com dois tipos, seria o número de nenhum dos dois.
+        assert self._dois_tipos()["cauda_anonimizada"] is None
+
+    def test_com_um_tipo_so_a_cauda_agregada_continua_existindo(self):
+        estado = montar_estado(
+            "2026-01-01T00:00:00+00:00",
+            [_cobertura(grao="query", cobertura_media=0.42)],
+            [],
+            {},
+        )
+        assert estado["cauda_anonimizada"] == 0.42
+
+    def test_linhas_por_tipo(self):
+        estado = self._dois_tipos()
+        assert estado["linhas_por_tipo"] == {"web": 9400, "image": 730}
+        assert estado["linhas"] == 10130
+
+    def test_o_texto_nomeia_cada_tipo_e_nao_soma(self):
+        texto = formatar_estado(self._dois_tipos())
+        assert "web:" in texto and "image:" in texto
+        assert "481 dias" in texto and "30 dias" in texto
+        assert "962" not in texto
+
+    def test_so_web_coletado_avisa_que_falta_image(self):
+        # Medido em site real: image pode ter MAIS impressões que web. Sem este
+        # aviso a janela deixa o analista achar que o acervo está completo.
+        texto = formatar_estado(
+            montar_estado("2026-01-01T00:00:00+00:00", [_cobertura()], [], _contagens(total=10))
+        )
+        assert "image" in texto
+        assert "--tipos web,image" in texto
+
+    def test_com_image_coletado_o_aviso_desaparece(self):
+        texto = formatar_estado(self._dois_tipos())
+        assert "--tipos web,image" not in texto
+
+    def test_dias_com_dado_nao_multiplica_pelos_graos(self):
+        # Regressão achada em dado real: `v_cobertura` tem uma linha por
+        # (tipo, grão, status), então somar dava "2886 dias com dado" num acervo
+        # de 481 dias — 481 x 6 grãos. Os grãos cobrem os MESMOS dias.
+        cobertura = [
+            _cobertura(grao=grao, dias=481, primeiro="2025-06-21", ultimo="2026-10-14")
+            for grao in ("total", "pagina", "query", "query_pagina", "dispositivo", "pais")
+        ]
+        texto = formatar_estado(montar_estado("2026-01-01T00:00:00+00:00", cobertura, [], {}))
+        assert "481 dias com dado" in texto
+        assert "2886" not in texto
 
 
 class TestProximoPasso:
@@ -151,7 +264,7 @@ class TestFormatarEstado:
         assert "etapa 1" in texto.lower()
 
     def test_mostra_periodo_e_linhas(self):
-        e = montar_estado("2026-01-01T00:00:00+00:00", [_cobertura()], [], {"total": 10})
+        e = montar_estado("2026-01-01T00:00:00+00:00", [_cobertura()], [], _contagens(total=10))
         texto = formatar_estado(e)
         assert "2026-01-01" in texto and "2026-01-10" in texto
         assert "10 dias com dado" in texto
