@@ -84,12 +84,16 @@ def format_site_summary(result: dict) -> str:
     return f"[OK]   {site:<28} health {score:.1f} ({grade})   snapshots: {snaps}"
 
 
-def run_batch(sites: list, pipeline_fn) -> list:
+def run_batch(sites: list, pipeline_fn, format_fn=format_site_summary) -> list:
     """
     Executa pipeline_fn(site) para cada site, em sequência.
 
     Qualquer exceção em um site é capturada e registrada — os demais sites
     continuam. Imprime uma linha-resumo após cada site e um recap ao final.
+
+    `format_fn` permite que outro pipeline troque a linha-resumo. O acervo (P7)
+    usa isso: o resumo dele não tem health_score, e o formatador padrão
+    imprimiria "sem dados (0 URLs no sitemap)" — que seria mentira.
 
     Retorna lista de resultados, na ordem de entrada:
     [
@@ -110,13 +114,13 @@ def run_batch(sites: list, pipeline_fn) -> list:
             result = {"site": site, "ok": False, "summary": None, "error": str(exc)}
             print(f"[batch] ERRO em {site}: {exc}")
         results.append(result)
-        print(f"[batch] {format_site_summary(result)}")
+        print(f"[batch] {format_fn(result)}")
 
     print("\n" + "=" * 62)
     print("  Resumo do lote")
     print("=" * 62)
     for result in results:
-        print(f"  {format_site_summary(result)}")
+        print(f"  {format_fn(result)}")
     ok_count = sum(1 for r in results if r["ok"])
     print("-" * 62)
     print(f"  {ok_count}/{total} site(s) concluido(s) com sucesso.")

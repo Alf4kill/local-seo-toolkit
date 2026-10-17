@@ -60,3 +60,34 @@ GSC_DELAY_DAYS = 3  # o GSC atrasa ~2-3 dias; end_date = hoje - este valor
 TRENDS_GEO = "BR"  # geo padrão do Google Trends (fetchers/trends_fetcher.py)
 INSPECT_DELAY = 0.5  # s entre chamadas da URL Inspection (cota 2000/dia)
 NLP_DELAY = 0.5  # s entre chamadas da Cloud Natural Language API
+
+# ---------------------------------------------------------------------------
+# Acervo (P7 — armazém histórico em SQLite; core/warehouse/ + acervo.py).
+#
+# O acervo existe porque a retenção do GSC é uma JANELA MÓVEL de ~16 meses:
+# cada dia que passa apaga para sempre o dia mais antigo. Ele faz o backfill
+# do que ainda existe e acumula para frente, sem nunca apagar.
+# ---------------------------------------------------------------------------
+ACERVO_DIAS_BACKFILL = 480  # mesma janela do Plano de Poda (máx. do GSC)
+ACERVO_ASSENTAMENTO_DIAS = 10  # dias que ainda "assentam" após aparecer
+ACERVO_TETO_DIA_TIPO = 50000  # teto documentado: linhas/dia/tipo/propriedade
+ACERVO_MAX_PAGINAS = 40  # freio de startRow por corpo (40 x 25k = 1M linhas)
+ACERVO_PAUSA_REQUISICAO = 1.0  # s entre chamadas (educado; não é cota)
+ACERVO_ESPERA_CARGA = 900  # s (15 min) — guia oficial p/ a load quota
+ACERVO_TENTATIVAS = 5  # retentativas para 429/5xx
+
+# Dias por requisição, por grão. Conservador até `acervo.py aferir` provar que
+# o teto de 50k vale por DIA dentro da consulta (e não por consulta) — a doc do
+# Google não resolve isso e as fontes de terceiros se contradizem.
+# Grãos baratos (poucas linhas/dia) cobrem a janela inteira numa requisição:
+# ACERVO_DIAS_BACKFILL + 1 porque o intervalo é inclusivo nas duas pontas.
+_ACERVO_JANELA_INTEIRA = ACERVO_DIAS_BACKFILL + 1
+ACERVO_DIAS_LOTE = {
+    "total": _ACERVO_JANELA_INTEIRA,
+    "dispositivo": _ACERVO_JANELA_INTEIRA,
+    "aparencia": _ACERVO_JANELA_INTEIRA,
+    "pais": 180,
+    "pagina": 30,
+    "query": 30,
+    "query_pagina": 7,
+}

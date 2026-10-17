@@ -653,3 +653,63 @@ def save_poda_php(site: str, date: str, php_block: str) -> str:
         f.write(php_block)
     print(f"[storage] Versao PHP (poda) salva em: {filepath}")
     return filepath
+
+
+# ---------------------------------------------------------------------------
+# Acervo (P7) — caminhos e CSV genérico
+# ---------------------------------------------------------------------------
+
+
+def _acervo_dir(site: str) -> str:
+    """
+    Diretório dedicado do acervo histórico do domínio:
+        relatorios/{safe_domain}/acervo/
+
+    Guarda o banco SQLite, o pacote de análise e os exports, separados dos
+    relatórios de posição/indexação (mesmo padrão de _poda_dir).
+    """
+    folder = os.path.join(_get_domain_dir(site), "acervo")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _acervo_path(site: str, date: str, suffix: str, ext: str) -> str:
+    """Caminho de um arquivo do acervo em relatorios/{dominio}/acervo/."""
+    return os.path.join(_acervo_dir(site), f"{date}_{suffix}.{ext}")
+
+
+def acervo_db_path(site: str) -> str:
+    """Caminho do banco do acervo: relatorios/{dominio}/acervo/acervo.sqlite3.
+
+    Sem data no nome: é um arquivo que ACUMULA, não um relatório datado.
+    """
+    return os.path.join(_acervo_dir(site), "acervo.sqlite3")
+
+
+def write_csv(
+    path: str,
+    header: list,
+    rows: list,
+    delimiter: str = ",",
+    comments: "list | None" = None,
+) -> str:
+    """
+    Grava um CSV genérico (portado de keyword-research/core/storage.py).
+
+    `comments` vira linhas iniciadas por '#' antes do cabeçalho. É assim que as
+    ressalvas do acervo (não somar ctr/position, cauda anonimizada, fuso da
+    Califórnia) viajam DENTRO do arquivo, onde quem abrir no Excel seis meses
+    depois vai de fato lê-las.
+
+    Encoding utf-8-sig e decimal ponto: formato de contrato-de-máquina, igual ao
+    de exportar_keywords.py (não o `;`/vírgula-decimal pt-BR do CSV da poda,
+    que é para edição humana).
+    """
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        for line in comments or []:
+            f.write(f"# {line}\n")
+        writer = csv.writer(f, delimiter=delimiter)
+        writer.writerow(header)
+        writer.writerows(rows)
+    return path
