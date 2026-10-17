@@ -13,7 +13,6 @@ P2 (roadmap):
 
 import sys
 from collections import defaultdict
-from urllib.parse import urlparse
 
 from config import (
     CANNIBAL_MAX_POSITION,
@@ -25,6 +24,7 @@ from config import (
 )
 
 from core.ctr import expected_ctr
+from core.urls import url_path_with_query
 
 # ---------------------------------------------------------------------------
 # P4 — Alertas por componente do health score
@@ -643,13 +643,7 @@ def build_consolidation_plan(cannibalization: list) -> dict:
     }
 
 
-def _url_path(url: str) -> str:
-    """Extrai o caminho (path + query) de uma URL absoluta. '/' se vazio."""
-    parsed = urlparse(url)
-    path = parsed.path or "/"
-    if parsed.query:
-        path += f"?{parsed.query}"
-    return path
+_url_path = url_path_with_query  # implementacao unica em core/urls.py
 
 
 def build_htaccess_block(plan: dict, date: str) -> str:

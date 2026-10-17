@@ -27,6 +27,7 @@ import re
 from urllib.parse import unquote, urlparse
 
 from core.content_quality import _normalize_accents, slug_phrase
+from core.urls import url_path
 
 # Ação sugerida vira "revisar" (em vez de 410) quando a URL antiga ainda tem
 # cliques > 0 ou impressões >= este piso no período analisado.
@@ -82,9 +83,7 @@ def normalize_for_match(url: str) -> str:
     return norm
 
 
-def _url_path(url: str) -> str:
-    """Caminho (sem query) de uma URL absoluta. '/' se vazio."""
-    return urlparse(url).path or "/"
+_url_path = url_path  # implementacao unica em core/urls.py
 
 
 def _is_homepage(url: str) -> bool:

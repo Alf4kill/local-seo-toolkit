@@ -175,6 +175,41 @@ It is a deliberate two-stage, human-in-the-loop flow:
    ingests the manual "Pages" export to cover URLs with zero impressions the API
    can't see.
 
+### Crawl budget (access logs)
+
+`logs.py` + `core/log_analyzer.py` + `reporters/crawl_reporter.py` measure what
+Googlebot actually *did*, from the server's own access log. This is the only
+available source for it: the GSC Crawl Stats report has no API, so the data
+cannot come from `fetchers/`. It runs fully local and spends no quota.
+
+It reports crawl frequency per URL, the bot/human split, sitemap pages never
+crawled, GSC "money pages" with impressions but zero crawl, and crawl wasted on
+query-string URLs and 4xx. The data source is **disjoint** from the warehouse and
+from `analytics.py`: a log is a server-side crawl fact, while GSC and the acervo
+are Search-side impressions. `detect_orphan_pages` (sitemap URL with no
+impressions) and `never_crawled` (sitemap URL with no Googlebot hit) are
+neighbouring, complementary signals — crossing them is the point.
+
+Two honesty constraints shape the design:
+
+1. **Bot identification.** The User-Agent is trivially forgeable, so
+   `classify_googlebot_ip` uses Google's documented reverse-then-forward DNS
+   check and returns three states, not a boolean: `verified`, `forged`, and
+   `unverifiable`. The third is treated as a probable CDN/proxy rather than
+   fraud — behind Cloudflare the logged IP is the proxy's, and calling that a
+   fake Googlebot would be a confident wrong verdict. DNS is opt-in
+   (`--verify-googlebot`) because it is slow; without it every surface labels
+   the detection "por UA (NÃO verificado)".
+2. **Refused verdicts.** `never_crawled` and `undercrawled_money` both depend on
+   having identified the bot at all. With a `common`-format log there is no
+   User-Agent, so nothing matches as Googlebot — and every sitemap URL would look
+   "never crawled" even when it is sitting right there in the log. Likewise,
+   crossing a 30-day GSC impressions window against a 2-day log cannot support
+   "undercrawled": a healthy page goes days without a crawl. Both cases are
+   **refused**, not guessed, and the reason is recorded in
+   `result["indisponivel"]` and printed on every surface — omitting a requested
+   analysis in silence would be its own kind of dishonesty.
+
 ## semantic-analyzer
 
 A single pipeline (`analisar.run_analysis`, called by both the CLI and the GUI

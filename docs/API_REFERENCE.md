@@ -74,6 +74,34 @@ py poda.py --site <domain> --compilar [CSV]   # stage 2 — compile reviewed CSV
 | `--sem-fallback-home` | flag | Disable the home-page fallback: `revisar` URLs with no query/slug target keep `destino_final` blank instead of suggesting the home as a last resort. |
 | `--no-cache` | flag | Ignore cache and force fresh API calls. |
 
+### `logs.py` — crawl budget (Googlebot via access log)
+
+Reads the server's access log (Apache/Nginx, `combined` or `common`, `.gz`
+transparent) and reports what Googlebot actually crawled. Fully local, no API
+quota. See the [crawl-budget concept](ARCHITECTURE.md#crawl-budget-access-logs)
+for the honesty constraints.
+
+```
+py logs.py --site <domain> --logs access.log [access.log.1.gz …] [flags]
+```
+
+| Flag | Type | Description |
+|------|------|-------------|
+| `--site` | required | Domain to analyze. |
+| `--logs FILE…` | required | One or more access-log files; `.gz` is read transparently. |
+| `--format` | `combined`\|`common` | Force the log format. Default: detect (`combined`, then `common`). |
+| `--no-sitemap` | flag | Skip the sitemap fetch, and with it the "never crawled" list. |
+| `--gsc` | flag | Cross with the newest saved `*_posicao.json` to flag undercrawled money pages. |
+| `--verify-googlebot` | flag | Verify each Googlebot IP by reverse+forward DNS (slow, reliable). |
+| `--top N` | int | Rows to show in the "top" tables (default from `config.CRAWL_TOP_N`). |
+
+Outputs `{date}_crawl.json`, `.txt`, `.csv` and `.html` under
+`relatorios/{domain}/`. Two verdicts are **refused** rather than guessed — with a
+`common` log (no User-Agent) nothing can be identified as Googlebot, and with a
+log window shorter than `config.UNDERCRAWLED_MIN_LOG_DAYS` "zero crawl" does not
+support "undercrawled". Each refusal appears in `result["indisponivel"]` with its
+reason, on every surface.
+
 ### `app.py` — GUI (ranking / indexing)
 
 ```
@@ -109,6 +137,9 @@ the pruning defaults (`PODA_MIN_IMPRESSIONS`, `PODA_DAYS_BACK`).
 |----------|---------|
 | `normalize_domain(site) -> str` | Canonicalize a domain so `https://x/` and `sc-domain:x` produce the same cache key. Single source of truth, imported by `posicao.py` and `position_fetcher.py`. |
 | `build_site_url(domain) -> str` | Build the Search Console property URL from a domain. |
+| `url_path(url) -> str` | Path only, **preserving** the trailing slash — the pruning plan needs the exact form, since a redirect target must match the live sitemap URL. |
+| `url_path_with_query(url) -> str` | Path + query. Feeds redirect generation, where `/p?id=1` and `/p?id=2` are different targets. |
+| `canonical_path(path_or_url) -> str` | The **join key** for sitemap × access log × GSC: no query or fragment, leading slash guaranteed, trailing slash stripped. Accepts a raw log path or an absolute URL. Single implementation for the same reason `normalize_domain` has one — the cross only works if all three sources produce the same key. |
 
 ### `core/ctr.py`
 
@@ -180,6 +211,19 @@ and compile redirect blocks. All outputs are clearly marked suggestions.
 | `build_poda_php(entries, date, filename=…) -> str` | Standalone PHP redirect file for hosts where the server config can't be edited. |
 | `print_pruning_plan(plan, max_display=10)` | Print the plan summary. |
 | `normalize_for_match(url) -> str` | Normalize a URL (www/https/trailing-slash/percent-encoding) for diffing. |
+
+### `core/log_analyzer.py`
+
+Pure aggregation of an access log, plus an opt-in DNS check (the module does
+import `socket` — it is not network-free).
+
+| Function | Purpose |
+|----------|---------|
+| `analyze_lines(lines, *, sitemap_urls, position_report, resolve_googlebot, format_name, top_n) -> dict` | Aggregate an iterable of log lines into a crawl-budget report. Streamable. Sets `has_user_agent`, `date_range`, the `googlebot` block, and `indisponivel` — the list of verdicts refused, with reasons. |
+| `analyze_logs(paths, **kwargs) -> dict` | Thin file wrapper over `analyze_lines`; accepts one path or a list, `.gz` transparent. |
+| `classify_googlebot_ip(ip) -> str` | `"verified"` / `"forged"` / `"unverifiable"` by reverse-then-forward DNS (Google's documented method). `unverifiable` means probable CDN/proxy, **not** fraud. |
+| `is_googlebot(ua) -> bool` | UA-only match against `config.GOOGLEBOT_UA_PATTERNS`. Forgeable by design — see `classify_googlebot_ip`. |
+| `print_crawl_report(result)` | Terminal summary, including every refused verdict and its reason. |
 
 ### `core/batch.py`
 

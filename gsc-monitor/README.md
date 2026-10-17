@@ -163,6 +163,50 @@ antiga, candidata a remoção (410/404) ou a 301 quando ainda rende impressões.
 > e importe com `--importar-gsc` (ou campo "Export GSC" na GUI) para
 > incluí-las no plano com origem `export-gsc`.
 
+### CLI — Crawl Budget (logs do servidor)
+
+Análise **100% local** do access log do servidor (Apache/Nginx) — **sem cota de
+API**. Mede o comportamento real do Googlebot: frequência de crawl por URL,
+páginas do sitemap **nunca rastreadas**, *money pages* com muitas impressões mas
+**zero crawl**, e desperdício em URLs com parâmetro / erros 4xx.
+
+```powershell
+.\.venv\Scripts\python.exe logs.py --site www.exemplo.com.br --logs access.log
+```
+
+| Flag | Descrição |
+|------|-----------|
+| `--site` | Domínio analisado (obrigatório) |
+| `--logs` | Um ou mais arquivos de log (aceita `.gz`) — obrigatório |
+| `--format` | `combined` ou `common` (padrão: detecta automaticamente) |
+| `--gsc` | Cruza com o último `*_posicao.json` salvo (money pages subcrawladas) |
+| `--no-sitemap` | Não busca o sitemap (pula a lista "nunca rastreadas") |
+| `--verify-googlebot` | Confirma cada IP por DNS reverso+direto (lento; elimina bot falsificado) |
+| `--top N` | Quantas linhas mostrar nas tabelas "top" |
+
+> **Honestidade analítica:** sem `--verify-googlebot`, a detecção do bot é só por
+> User-Agent — que é **falsificável**. O relatório rotula isso explicitamente
+> ("por UA, não verificado") em vez de afirmar certeza.
+>
+> **Atrás de CDN (Cloudflare etc.):** o access log normalmente registra o IP do
+> *proxy*, não o do bot. Nesse caso `--verify-googlebot` marca os hits como
+> **"não verificáveis"** (sem PTR) — **não** como fraude — e o relatório avisa.
+> Para verificar de fato, configure o log para gravar o IP real do visitante
+> (header `CF-Connecting-IP`).
+
+#### Como exportar o access log para a sua máquina
+
+O log fica **no servidor**; a análise roda **local**. Baixe o arquivo antes:
+
+- **Plesk:** *Sites & Domains → (domínio) → Logs* — baixe `access_log` (ou os
+  rotacionados `*.processed` / `*.gz`). Via SSH/SFTP eles ficam em
+  `/var/www/vhosts/system/{dominio}/logs/`.
+- **Apache padrão:** `/var/log/apache2/access.log*`
+- **Nginx padrão:** `/var/log/nginx/access.log*`
+
+Copie para a máquina local e aponte `--logs` para o arquivo. Os logs **não** são
+versionados (`*.log` está no `.gitignore`).
+
 ---
 
 ## Relatórios gerados
@@ -184,6 +228,8 @@ Todos os arquivos ficam em `relatorios/{dominio}/`:
 | `poda/YYYY-MM-DD_poda_redirect.txt` | Mesmo plano no estilo `Redirect 301 /caminho/ destino` do mod_alias (diretiva simples; **prefix-match**) |
 | `poda/YYYY-MM-DD_poda_nginx.txt` | Bloco `server {}` compilado do plano de poda revisado |
 | `poda/YYYY-MM-DD_poda.php` | Versão PHP do plano compilado — `require` no topo do `index.php`/`wp-config.php` |
+| `YYYY-MM-DD_crawl.html` | Dashboard de crawl budget (Googlebot via access log) |
+| `YYYY-MM-DD_crawl.json/.csv/.txt` | Crawl por URL, nunca-rastreadas e money pages subcrawladas |
 
 > Os artefatos do Plano de Poda ficam na subpasta dedicada
 > `relatorios/{dominio}/poda/`.
@@ -255,7 +301,7 @@ sugestão de destino (casariam com qualquer página).
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Saída esperada: **309 testes OK**. Toda a suíte roda no pytest (config em
+Saída esperada: **482 testes OK**. Toda a suíte roda no pytest (config em
 `pytest.ini`); as chamadas de rede são mockadas, então nenhum teste gasta cota.
 A CI ainda aplica um piso de cobertura (40%).
 
@@ -270,7 +316,8 @@ gsc-monitor/
   posicao.py      ← CLI: posicionamento
   main.py         ← CLI: indexação
   poda.py         ← CLI: Plano de Poda (gerar/compilar)
-  config.py       ← BASE_DIR centralizado
+  logs.py         ← CLI: crawl budget (Googlebot via access log, local)
+  config.py       ← BASE_DIR + constantes transversais
   core/           ← lógica de negócio
     auth.py       ← OAuth2 Google
     cache.py      ← cache JSON por domínio
@@ -279,6 +326,8 @@ gsc-monitor/
     pruning.py    ← Plano de Poda: diff GSC × sitemap, sugestões, blocos
     classifier.py ← mapeamento verdict → categoria
     sitemap.py    ← parser de sitemap.xml
+    log_analyzer.py ← parser/agregação de access log (crawl budget; puro,
+                      exceto o DNS opt-in de verificação do Googlebot)
   fetchers/       ← integração com APIs externas
     inspector.py         ← URL Inspection API
     position_fetcher.py  ← Search Analytics API
@@ -290,6 +339,7 @@ gsc-monitor/
     position_reporter.py ← relatórios de posicionamento
     excel_reporter.py    ← geração de Excel
     html_reporter.py     ← dashboard HTML
+    crawl_reporter.py    ← relatório de crawl budget (HTML/TXT)
   gui/
     main_window.py ← janela Tkinter principal
     runner.py      ← execução em thread
@@ -297,7 +347,8 @@ gsc-monitor/
     poda_runner.py ← execução em thread das etapas de poda
   tests/             ← suíte pytest: test_storage, test_cache, test_analytics,
                        test_ctr, test_classifier, test_sitemap, test_content_quality,
-                       test_position_fetcher, test_phase5 (APIs), test_phase6 (dashboard)
+                       test_position_fetcher, test_log_analyzer, test_crawl_reporter,
+                       test_phase5 (APIs), test_phase6 (dashboard)
   relatorios/
     {dominio}/     ← arquivos por domínio
       .cache/      ← cache de API
@@ -313,3 +364,4 @@ gsc-monitor/
 - `--trends` usa por padrão a dimensão `date` do GSC (oficial, sem dependência extra). `pytrends` só é necessário para o caminho legado `--trends-source pytrends`.
 - O dashboard HTML é gerado automaticamente a cada execução de posicionamento.
 - A flag `--nlp` consome cota da Cloud Natural Language API (2 unidades por URL, gratuito até 5.000/mês).
+- `logs.py` analisa o access log do servidor **localmente** (crawl budget do Googlebot), **sem cota de API**; aceita `.gz` e múltiplos arquivos. Combine com `--gsc` (após rodar `posicao.py`) para cruzar crawl × impressões.

@@ -37,6 +37,13 @@ plano*.html
 consolidacao*.html
 diferenciacao*.html
 *.log
+# Access logs baixados do servidor para o analisador de crawl budget (logs.py).
+# `*.log` sozinho NAO cobria os nomes que o README manda baixar — e um access
+# log tem IP de visitante e URL de cliente, num repositorio publico.
+access_log*
+*.processed
+*.log.[0-9]*
+*.log.gz
 
 # ══════════════════════════════ Python ══════════════════════════════════
 __pycache__/
