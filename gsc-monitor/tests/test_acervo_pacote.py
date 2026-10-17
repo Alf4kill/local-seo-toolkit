@@ -577,6 +577,82 @@ class TestCoortesDeUrl(_PacoteBase):
 # ---------------------------------------------------------------------------
 
 
+class TestCoorteMaiorQueAsInformadas(_PacoteBase):
+    """O GSC devolve URL com fragmento como linha própria de `dim_pagina`.
+
+    São os links de "pular para" da SERP (`pagina#secao`). Todas colapsam na
+    mesma chave canônica, então UMA URL anotada pode trazer VÁRIAS linhas — e o
+    tamanho da coorte passa do número de URLs informadas. Medido em site real:
+    98 das linhas de `dim_pagina` eram variantes com fragmento.
+
+    Antes desta correção o relatório imprimia isso como "casadas de informadas",
+    produzindo "248 de 243" — que quem analisa lê como defeito, não como dado.
+    """
+
+    def _semear_fragmentos(self):
+        for sufixo in ("#secao-um", "#secao-dois"):
+            store.gravar_lote(
+                self.conn,
+                grao="pagina",
+                propriedade=PROPRIEDADE,
+                tipo="web",
+                linhas=[_linha(DIAS[0], {"pagina_id": URL_VELHA + sufixo})],
+                dias_do_lote=[DIAS[0]],
+                data_state="final",
+            )
+
+    def test_uma_url_informada_traz_todas_as_variantes_com_fragmento(self):
+        self._semear_fragmentos()
+        ident = store.adicionar_evento(
+            self.conn,
+            propriedade=PROPRIEDADE,
+            data=DIAS[0],
+            tipo="conteudo-editado",
+            descricao="reescrita",
+            urls=[URL_VELHA],
+        )
+        info = store.casar_urls_evento(self.conn, evento_id=ident)[ident]
+        # UMA informada, UMA casou, TRÊS páginas na coorte (base + 2 fragmentos).
+        self.assertEqual(info["informadas"], 1)
+        self.assertEqual(info["casadas"], 1)
+        self.assertEqual(info["paginas"], 3)
+        self.assertEqual(info["sem_casamento"], [])
+
+    def test_casadas_nunca_passa_de_informadas(self):
+        # A razão "casadas de informadas" tem de ser sempre verdadeira.
+        self._semear_fragmentos()
+        ident = store.adicionar_evento(
+            self.conn,
+            propriedade=PROPRIEDADE,
+            data=DIAS[0],
+            tipo="conteudo-editado",
+            descricao="reescrita",
+            urls=[URL_VELHA, "https://www.exemplo.com.br/nunca-existiu"],
+        )
+        info = store.casar_urls_evento(self.conn, evento_id=ident)[ident]
+        self.assertLessEqual(info["casadas"], info["informadas"])
+        self.assertEqual(info["casadas"], 1)
+        self.assertEqual(len(info["sem_casamento"]), 1)
+
+    def test_o_dados_md_explica_a_coorte_maior_nos_dois_sentidos(self):
+        self._semear_fragmentos()
+        store.adicionar_evento(
+            self.conn,
+            propriedade=PROPRIEDADE,
+            data=DIAS[0],
+            tipo="conteudo-editado",
+            descricao="reescrita",
+            urls=[URL_VELHA],
+        )
+        bloco = self._dados_md().split("## 10.")[1].split("## 11.")[0]
+        self.assertIn("páginas na coorte", bloco)
+        self.assertIn("não é dupla contagem", bloco)
+        self.assertIn("fragmento", bloco)
+        # E diz o que significa cada direção, não só uma.
+        self.assertIn("**menor** que as informadas", bloco)
+        self.assertIn("**maior** que as informadas", bloco)
+
+
 class TestEventosEUrls(_PacoteBase):
     def _evento(self, urls, **kwargs):
         ident = store.adicionar_evento(

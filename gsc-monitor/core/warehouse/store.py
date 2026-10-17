@@ -579,7 +579,11 @@ def listar_eventos(conn: sqlite3.Connection, *, propriedade: "str | None" = None
     }
     for linha in linhas:
         linha["urls_informadas"] = len(urls_informadas(linha.get("urls")))
-        linha["urls_casadas"] = casadas.get(linha["id"], 0)
+        # Tamanho da coorte em linhas de dim_pagina. PODE passar de
+        # `urls_informadas`, porque o GSC devolve URL com fragmento como linha
+        # propria e todas colapsam na mesma chave — ver casar_urls_evento.
+        linha["paginas_na_coorte"] = casadas.get(linha["id"], 0)
+        linha["urls_casadas"] = linha["paginas_na_coorte"]
     return linhas
 
 
@@ -670,7 +674,10 @@ def casar_urls_evento(conn: sqlite3.Connection, *, evento_id: "int | None" = Non
     uma URL do evento pode só entrar em dim_pagina numa ingestão posterior
     (página publicada depois de o evento ter sido anotado).
 
-    Retorna {evento_id: {"informadas": n, "casadas": n, "sem_casamento": [url, ...]}}.
+    Retorna {evento_id: {"informadas": n, "casadas": n, "paginas": n,
+    "sem_casamento": [url, ...]}} — `casadas` são URLs informadas que acharam
+    par (compara com `informadas`), `paginas` é o tamanho da coorte em linhas de
+    dim_pagina, que pode passar de `informadas`.
     """
     if evento_id is None:
         eventos = list(
@@ -706,10 +713,12 @@ def casar_urls_evento(conn: sqlite3.Connection, *, evento_id: "int | None" = Non
             conn.execute("DELETE FROM evento_pagina WHERE evento_id = ?", (ident,))
             casados: set = set()
             sem_casamento = []
+            quantas_casaram = 0
             for url in informadas:
                 ids = indice.get(chave_pagina(url, host=host))
                 if ids:
                     casados.update(ids)
+                    quantas_casaram += 1
                 else:
                     sem_casamento.append(url)
             for pagina_id in sorted(casados):
@@ -717,9 +726,18 @@ def casar_urls_evento(conn: sqlite3.Connection, *, evento_id: "int | None" = Non
                     "INSERT OR IGNORE INTO evento_pagina (evento_id, pagina_id) VALUES (?, ?)",
                     (ident, pagina_id),
                 )
+            # Três números, e eles NÃO são o mesmo. `casadas` conta URLs
+            # INFORMADAS que acharam par, então `casadas de informadas` é uma
+            # razão verdadeira. `paginas` conta linhas de dim_pagina na coorte, e
+            # pode PASSAR de `informadas`: o GSC devolve URL com fragmento
+            # (`...#secao`, os links de "pular para" da SERP) como linha própria,
+            # e todas colapsam na mesma chave canônica. Reportar o tamanho da
+            # coorte como se fosse "casadas de informadas" imprimia coisas como
+            # "248 de 243", que lido por quem analisa é defeito, não informação.
             relatorio[ident] = {
                 "informadas": len(informadas),
-                "casadas": len(casados),
+                "casadas": quantas_casaram,
+                "paginas": len(casados),
                 "sem_casamento": sem_casamento,
             }
     return relatorio

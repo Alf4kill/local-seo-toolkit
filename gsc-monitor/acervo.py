@@ -570,7 +570,13 @@ def cmd_anotar(args) -> dict:
         return {"evento_id": ident, "urls": 0}
 
     print(f"  URLs informadas: {casamento['informadas']}")
-    print(f"  casadas em dim_pagina: {casamento['casadas']}")
+    print(f"  casaram: {casamento['casadas']} de {casamento['informadas']}")
+    print(f"  coorte em dim_pagina: {casamento['paginas']} pagina(s)")
+    if casamento["paginas"] > casamento["casadas"]:
+        print(
+            "    (passa das informadas porque o GSC devolve URL com fragmento "
+            "'#secao' como linha propria; todas sao a mesma pagina)"
+        )
     if casamento["sem_casamento"]:
         print(
             f"  NAO casaram ({len(casamento['sem_casamento'])}): ou a URL nunca teve "
@@ -587,7 +593,12 @@ def cmd_anotar(args) -> dict:
             "  O evento foi gravado de todo jeito, e o casamento e refeito a cada "
             "`pacote` — uma URL publicada agora entra em dim_pagina na proxima ingestao."
         )
-    return {"evento_id": ident, "urls": casamento["informadas"], "casadas": casamento["casadas"]}
+    return {
+        "evento_id": ident,
+        "urls": casamento["informadas"],
+        "casadas": casamento["casadas"],
+        "paginas": casamento["paginas"],
+    }
 
 
 def cmd_eventos(args) -> dict:
@@ -623,8 +634,8 @@ def cmd_eventos(args) -> dict:
         print(f"  #{ev['id']:<4} {periodo:<24} {ev['tipo']:<18} {ev['descricao']}")
         if ev["urls_informadas"]:
             print(
-                f"         URLs: {ev['urls_casadas']} casadas de {ev['urls_informadas']} "
-                f"informadas   (fonte: {ev['fonte'] or '—'})"
+                f"         URLs: {ev['urls_informadas']} informadas, coorte de "
+                f"{ev['paginas_na_coorte']} pagina(s)   (fonte: {ev['fonte'] or '—'})"
             )
         for url in urls_por_evento.get(ev["id"], []):
             print(f"           - {url}")

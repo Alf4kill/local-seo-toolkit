@@ -311,13 +311,15 @@ ORDER BY grao, ano_mes
         "eventos_e_suas_coortes",
         "Eventos anotados e o tamanho da coorte de cada um",
         (
-            "`urls_casadas` menor que o que você anotou significa que a URL não "
-            "existe em dim_pagina — ou nunca teve impressão, ou a forma informada "
-            "não casou. Confira em evento_urls.csv antes de concluir."
+            "`paginas_na_coorte` conta linhas de dim_pagina, nao URLs anotadas. "
+            "Menor que o que voce anotou: alguma URL nao existe em dim_pagina "
+            "(sem impressao, ou forma diferente da que o GSC devolve) — veja "
+            "evento_urls.csv. Maior: o GSC devolve URL com fragmento como linha "
+            "propria e todas sao a mesma pagina. Nao e dupla contagem."
         ),
         """
 SELECT e.id, e.data, COALESCE(e.data_fim, e.data) AS data_fim, e.tipo, e.descricao,
-       e.fonte, COUNT(ep.pagina_id) AS urls_casadas
+       e.fonte, COUNT(ep.pagina_id) AS paginas_na_coorte
 FROM evento e
 LEFT JOIN evento_pagina ep ON ep.evento_id = e.id
 GROUP BY e.id
@@ -1054,7 +1056,7 @@ def _secao_timeline(dados: dict) -> list:
         return linhas
 
     linhas += [
-        "| id | data | até | tipo | descrição | URLs informadas | casadas em `dim_pagina` |",
+        "| id | data | até | tipo | descrição | URLs informadas | páginas na coorte |",
         "|---|---|---|---|---|---|---|",
     ]
     for ev in eventos:
@@ -1065,10 +1067,18 @@ def _secao_timeline(dados: dict) -> list:
         )
     linhas += [
         "",
-        "A coluna **casadas** é a coorte utilizável: está em `evento_pagina`, pronta para "
-        "o JOIN da consulta `antes_depois_evento_tratadas_x_demais`. Quando ela é menor "
-        "que as informadas, as URLs que não casaram estão em `evento_urls.csv` — ou nunca "
-        "tiveram impressão, ou a forma informada não corresponde à que o GSC devolve.",
+        "A coluna **páginas na coorte** é o que está em `evento_pagina`, pronto para o "
+        "JOIN da consulta `antes_depois_evento_tratadas_x_demais`. Ela conta linhas de "
+        "`dim_pagina`, e as duas colunas NÃO são a mesma unidade — comparar uma com a "
+        "outra como se fossem engana nos dois sentidos:",
+        "",
+        "- **menor** que as informadas: alguma URL anotada não existe em `dim_pagina`. "
+        "Ou nunca teve impressão, ou a forma informada não corresponde à que o GSC "
+        "devolve. Quais foram está em `evento_urls.csv`.",
+        "- **maior** que as informadas: normal, e não é dupla contagem. O GSC devolve "
+        'URL com fragmento (`pagina#secao`, os links de "pular para" da SERP) como '
+        "linha própria de `dim_pagina`, e todas colapsam na mesma página ao casar. "
+        "Uma URL anotada pode portanto trazer várias linhas, todas da mesma página.",
         "",
         "**Datas de core update do Google NÃO estão aqui**, de propósito: não são dado "
         "deste site. Pesquise-as na sessão de análise, na fonte oficial, e trate-as como "
