@@ -25,7 +25,9 @@ import json
 import os
 import sqlite3
 from datetime import UTC, datetime
+from urllib.parse import unquote
 
+from core.urls import canonical_path, normalize_domain
 from core.warehouse import schema
 from core.warehouse.plan import GRAOS, dia_definitivo
 
@@ -535,7 +537,14 @@ def adicionar_evento(
     urls: "list | None" = None,
     fonte: str = "manual",
 ) -> int:
-    """Registra uma mudança no site. Dado, não análise."""
+    """Registra uma mudança no site. Dado, não análise.
+
+    `urls` é a peça que transforma a análise em COMPARAÇÃO: com ela, "reescrevi
+    o texto destas 40 URLs nesta data" vira um grupo tratado contra o resto do
+    site. É guardada como JSON array na forma exata em que foi informada (a do
+    projeto do site); o casamento com a forma do GSC fica em
+    `casar_urls_evento`, e o texto original permanece intacto para auditoria.
+    """
     with conn:
         cur = conn.execute(
             "INSERT INTO evento (propriedade, data, data_fim, tipo, descricao, urls, "
@@ -555,16 +564,174 @@ def adicionar_evento(
 
 
 def listar_eventos(conn: sqlite3.Connection, *, propriedade: "str | None" = None) -> list:
+    """Eventos, com a contagem de URLs informadas e de URLs casadas em dim_pagina."""
     if propriedade:
         sql = "SELECT * FROM v_evento WHERE propriedade = ? ORDER BY data, id"
-        return [dict(linha) for linha in conn.execute(sql, (propriedade,))]
-    return [dict(linha) for linha in conn.execute("SELECT * FROM v_evento ORDER BY data, id")]
+        linhas = [dict(linha) for linha in conn.execute(sql, (propriedade,))]
+    else:
+        linhas = [dict(linha) for linha in conn.execute("SELECT * FROM v_evento ORDER BY data, id")]
+
+    casadas = {
+        linha["evento_id"]: linha["n"]
+        for linha in conn.execute(
+            "SELECT evento_id, COUNT(*) AS n FROM evento_pagina GROUP BY evento_id"
+        )
+    }
+    for linha in linhas:
+        linha["urls_informadas"] = len(urls_informadas(linha.get("urls")))
+        linha["urls_casadas"] = casadas.get(linha["id"], 0)
+    return linhas
 
 
 def remover_evento(conn: sqlite3.Connection, evento_id: int) -> bool:
+    """Remove o evento e a coorte de URLs que pendia dele."""
     with conn:
+        # Explícito em vez de confiar no ON DELETE CASCADE: `PRAGMA foreign_keys`
+        # não persiste entre conexões, e um banco aberto por outra ferramenta
+        # (ou pelo `sqlite3` do terminal) deixaria órfãos silenciosos.
+        conn.execute("DELETE FROM evento_pagina WHERE evento_id = ?", (evento_id,))
         cur = conn.execute("DELETE FROM evento WHERE id = ?", (evento_id,))
     return bool(cur.rowcount)
+
+
+# ---------------------------------------------------------------------------
+# Casamento das URLs do evento com dim_pagina
+# ---------------------------------------------------------------------------
+
+
+def _tirar_host_nu(url: str, host: "str | None") -> str:
+    """'exemplo.com.br/a' -> '/a', mas SÓ quando o host é o da propriedade.
+
+    `urlsplit` só reconhece netloc depois de '//': sem esquema, o host inteiro
+    vazia para dentro do caminho, e 'exemplo.com.br/a' virava a chave
+    '/exemplo.com.br/a', que não casa com nada. A forma sem protocolo é comum
+    justamente nas listas que o analista cola (projeto do site, planilha, export
+    de crawler), e uma URL que não casa vai para o grupo NÃO TRATADO —
+    contaminando o controle da comparação que `evento_pagina` existe para
+    sustentar.
+
+    A decisão não pode sair da string sozinha: 'arquivo.pdf/x' é um caminho
+    relativo legítimo e também tem ponto. Por isso o corte só acontece quando o
+    primeiro segmento é o host DA PROPRIEDADE (com ou sem www) — que já está em
+    `evento.propriedade`. Fora disso não se adivinha nada.
+    """
+    if not host or "//" in url:
+        return url
+    nu = url.lstrip("/")
+    primeiro = nu.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].lower()
+    base = host.lower().removeprefix("www.")
+    if primeiro not in (base, f"www.{base}"):
+        return url
+    resto = nu[len(nu.split("/", 1)[0]) :]
+    return resto or "/"
+
+
+def chave_pagina(url: str, *, host: "str | None" = None) -> str:
+    """Chave de casamento entre a URL do PROJETO do site e a que o GSC devolveu.
+
+    Parte de `core/urls.py:canonical_path` (que já derruba protocolo, host — e
+    com ele o www —, query, fragmento e barra final) e acrescenta DUAS coisas:
+
+      - o percent-encoding é desfeito. O GSC devolve o caminho codificado
+        ('/categoria/pe%C3%A7as') e o projeto do site costuma ter o acentuado
+        ('/categoria/peças'); sem desfazer, os dois nunca casariam;
+      - o host nu de uma URL sem esquema é retirado quando é o host de `host`
+        (ver `_tirar_host_nu`).
+
+    Mora aqui, e não em `core/urls.py`, de propósito: `canonical_path` é a chave
+    do cruzamento sitemap × access log × GSC, e mexer nela mudaria o
+    comportamento da poda e do analisador de log. Esta variante é só do acervo.
+
+    `host` é o host da propriedade (de `core/urls.py:normalize_domain`). Sem
+    ele, uma URL sem esquema com host nu continua não casando — é o preço de não
+    adivinhar, e quem chama tem a propriedade à mão.
+    """
+    return unquote(canonical_path(_tirar_host_nu(url.strip(), host)))
+
+
+def urls_informadas(urls_json: "str | None") -> list:
+    """Desserializa `evento.urls` (JSON array), tolerando NULL e conteúdo inválido."""
+    if not urls_json:
+        return []
+    try:
+        valores = json.loads(urls_json)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(valores, list):
+        return []
+    return [str(v).strip() for v in valores if str(v).strip()]
+
+
+def casar_urls_evento(conn: sqlite3.Connection, *, evento_id: "int | None" = None) -> dict:
+    """(Re)constrói `evento_pagina` a partir de `evento.urls`.
+
+    Roda no `anotar` — para o analista ver na hora quantas URLs não casaram, em
+    vez de descobrir meses depois, na análise — e de novo no `pacote`, porque
+    uma URL do evento pode só entrar em dim_pagina numa ingestão posterior
+    (página publicada depois de o evento ter sido anotado).
+
+    Retorna {evento_id: {"informadas": n, "casadas": n, "sem_casamento": [url, ...]}}.
+    """
+    if evento_id is None:
+        eventos = list(
+            conn.execute("SELECT id, propriedade, urls FROM evento WHERE urls IS NOT NULL")
+        )
+    else:
+        eventos = list(
+            conn.execute(
+                "SELECT id, propriedade, urls FROM evento WHERE id = ? AND urls IS NOT NULL",
+                (evento_id,),
+            )
+        )
+    if not eventos:
+        return {}
+
+    # Um índice por chave canônica de TODA a dim_pagina. Mais de uma URL do GSC
+    # pode colapsar na mesma chave (barra final, encoding) — e aí as duas entram
+    # na coorte, porque são a mesma página vista em duas formas.
+    #
+    # Indexado SEM `host`: a URL que a API devolve sempre vem com esquema, então
+    # não há host nu para tirar deste lado. O `host` entra só na URL informada
+    # pelo analista, que é a que pode vir sem protocolo.
+    indice: dict = {}
+    for linha in conn.execute("SELECT id, url FROM dim_pagina"):
+        indice.setdefault(chave_pagina(linha["url"]), []).append(int(linha["id"]))
+
+    relatorio: dict = {}
+    with conn:
+        for evento in eventos:
+            ident = int(evento["id"])
+            host = normalize_domain(evento["propriedade"] or "")
+            informadas = urls_informadas(evento["urls"])
+            conn.execute("DELETE FROM evento_pagina WHERE evento_id = ?", (ident,))
+            casados: set = set()
+            sem_casamento = []
+            for url in informadas:
+                ids = indice.get(chave_pagina(url, host=host))
+                if ids:
+                    casados.update(ids)
+                else:
+                    sem_casamento.append(url)
+            for pagina_id in sorted(casados):
+                conn.execute(
+                    "INSERT OR IGNORE INTO evento_pagina (evento_id, pagina_id) VALUES (?, ?)",
+                    (ident, pagina_id),
+                )
+            relatorio[ident] = {
+                "informadas": len(informadas),
+                "casadas": len(casados),
+                "sem_casamento": sem_casamento,
+            }
+    return relatorio
+
+
+def paginas_do_evento(conn: sqlite3.Connection, evento_id: int) -> list:
+    """As URLs do GSC que casaram com o evento — a coorte tratada, em texto."""
+    sql = (
+        "SELECT p.url FROM evento_pagina ep JOIN dim_pagina p ON p.id = ep.pagina_id "
+        "WHERE ep.evento_id = ? ORDER BY p.url"
+    )
+    return [linha["url"] for linha in conn.execute(sql, (evento_id,))]
 
 
 # ---------------------------------------------------------------------------
@@ -599,6 +766,175 @@ def dias_provisorios(conn: sqlite3.Connection, *, propriedade: str) -> list:
 def ultimas_execucoes(conn: sqlite3.Connection, limite: int = 5) -> list:
     sql = "SELECT * FROM execucao ORDER BY id DESC LIMIT ?"
     return [dict(linha) for linha in conn.execute(sql, (limite,))]
+
+
+def dias_por_grao(conn: sqlite3.Connection, *, propriedade: str, tipo: str) -> list:
+    """Por grão: primeiro/último dia, dias por status e os dias que FALTAM.
+
+    "Falta" é medido contra o calendário contínuo entre o primeiro e o último
+    dia registrados daquele grão — não contra a janela pedida na CLI. É a única
+    definição que não depende de lembrar com que `--dias` o backfill rodou.
+    """
+    sql = (
+        "SELECT grao, status, COUNT(*) AS dias, MIN(data) AS primeiro, MAX(data) AS ultimo, "
+        "       SUM(linhas) AS linhas "
+        "FROM ingestao WHERE propriedade=? AND tipo=? GROUP BY grao, status"
+    )
+    por_grao: dict = {}
+    for linha in conn.execute(sql, (propriedade, tipo)):
+        info = por_grao.setdefault(
+            linha["grao"],
+            {
+                "grao": linha["grao"],
+                "por_status": {},
+                "primeiro": None,
+                "ultimo": None,
+                "linhas": 0,
+            },
+        )
+        info["por_status"][linha["status"]] = linha["dias"]
+        info["linhas"] += int(linha["linhas"] or 0)
+        if info["primeiro"] is None or linha["primeiro"] < info["primeiro"]:
+            info["primeiro"] = linha["primeiro"]
+        if info["ultimo"] is None or linha["ultimo"] > info["ultimo"]:
+            info["ultimo"] = linha["ultimo"]
+
+    for grao, info in por_grao.items():
+        registrados = {
+            linha["data"]
+            for linha in conn.execute(
+                "SELECT data FROM ingestao WHERE propriedade=? AND tipo=? AND grao=?",
+                (propriedade, tipo, grao),
+            )
+        }
+        info["dias_registrados"] = len(registrados)
+        info["faltando"] = (
+            [dia for dia in _calendario(info["primeiro"], info["ultimo"]) if dia not in registrados]
+            if info["primeiro"]
+            else []
+        )
+        info["dias_teto"] = [
+            linha["data"]
+            for linha in conn.execute(
+                "SELECT data FROM ingestao WHERE propriedade=? AND tipo=? AND grao=? "
+                "AND status IN (?, ?) ORDER BY data",
+                (propriedade, tipo, grao, STATUS_TETO, STATUS_CAPADO),
+            )
+        ]
+    return [por_grao[grao] for grao in sorted(por_grao)]
+
+
+def _calendario(inicio: str, fim: str) -> list:
+    """Todo dia ISO entre `inicio` e `fim`, inclusive."""
+    from datetime import date, timedelta
+
+    primeiro, ultimo = date.fromisoformat(inicio), date.fromisoformat(fim)
+    return [(primeiro + timedelta(days=n)).isoformat() for n in range((ultimo - primeiro).days + 1)]
+
+
+def agregacao_e_cobertura(conn: sqlite3.Connection, *, propriedade: str, tipo: str) -> list:
+    """Por grão: `responseAggregationType` declarado pela API + cobertura medida.
+
+    Os dois JUNTOS, nunca separados. A cobertura só é interpretável à luz da
+    agregação: `byProperty` conta uma impressão de SERP uma vez para o site
+    inteiro (e aí cobertura < 1 mede a cauda anonimizada), enquanto `byPage`
+    conta uma vez POR URL do site que apareceu naquela SERP (e aí cobertura > 1
+    é o esperado, não defeito). Ver pacote.py, que escreve isso no DADOS.md.
+    """
+    sql = (
+        "SELECT grao, agregacao_resposta AS agregacao, COUNT(*) AS dias, "
+        "       AVG(cobertura_impressoes) AS media, MIN(cobertura_impressoes) AS minimo, "
+        "       MAX(cobertura_impressoes) AS maximo "
+        "FROM ingestao WHERE propriedade=? AND tipo=? AND cobertura_impressoes IS NOT NULL "
+        "GROUP BY grao, agregacao_resposta ORDER BY grao, agregacao_resposta"
+    )
+    return [dict(linha) for linha in conn.execute(sql, (propriedade, tipo))]
+
+
+def cobertura_por_mes(conn: sqlite3.Connection, *, propriedade: str, tipo: str) -> list:
+    """{grao, ano_mes, agregacao, cobertura média do mês} — a série da cauda."""
+    sql = (
+        "SELECT grao, substr(data, 1, 7) AS ano_mes, agregacao_resposta AS agregacao, "
+        "       AVG(cobertura_impressoes) AS media, COUNT(*) AS dias "
+        "FROM ingestao WHERE propriedade=? AND tipo=? AND cobertura_impressoes IS NOT NULL "
+        "GROUP BY grao, ano_mes, agregacao_resposta ORDER BY grao, ano_mes"
+    )
+    return [dict(linha) for linha in conn.execute(sql, (propriedade, tipo))]
+
+
+def coortes_url(conn: sqlite3.Connection, *, propriedade: str, tipo: str) -> dict:
+    """Primeiro e último dia em que cada URL apareceu, agrupados por mês.
+
+    Dado que já existe (MIN/MAX de `fato_pagina`), e que de graça mostra as
+    ondas de publicação e de mortandade de URLs.
+
+    AS DUAS PONTAS SÃO ARTEFATO, e por isso vêm rotuladas: toda URL que já
+    existia quando a janela abriu cai no primeiro mês ("surgiu" ali só porque a
+    janela começa ali), e toda URL ainda viva cai no último ("vista por último"
+    ali só porque o dado termina ali). Sem o rótulo, as duas pontas são lidas
+    como onda real — foi o primeiro erro de leitura que o dado real produziu.
+
+    Retorna as duas distribuições por mês, os meses de borda e a contagem
+    exata de URLs censuradas em cada ponta (as que tocam o primeiro/último dia).
+    """
+    linha = conn.execute(
+        "SELECT MIN(data) AS primeiro, MAX(data) AS ultimo FROM fato_pagina "
+        "WHERE propriedade=? AND tipo=?",
+        (propriedade, tipo),
+    ).fetchone()
+    primeiro_dia, ultimo_dia = linha["primeiro"], linha["ultimo"]
+    vazio = {
+        "primeiro_dia": None,
+        "ultimo_dia": None,
+        "mes_borda_inicial": None,
+        "mes_borda_final": None,
+        "surgimentos": [],
+        "desaparecimentos": [],
+        "censuradas_a_esquerda": 0,
+        "censuradas_a_direita": 0,
+        "urls": 0,
+    }
+    if not primeiro_dia:
+        return vazio
+
+    por_url = {
+        int(linha["pagina_id"]): (linha["surgiu"], linha["visto_por_ultimo"])
+        for linha in conn.execute(
+            "SELECT pagina_id, MIN(data) AS surgiu, MAX(data) AS visto_por_ultimo "
+            "FROM fato_pagina WHERE propriedade=? AND tipo=? GROUP BY pagina_id",
+            (propriedade, tipo),
+        )
+    }
+    mes_inicial, mes_final = primeiro_dia[:7], ultimo_dia[:7]
+
+    surgimentos: dict = {}
+    desaparecimentos: dict = {}
+    censuradas_esq = censuradas_dir = 0
+    for surgiu, visto in por_url.values():
+        surgimentos[surgiu[:7]] = surgimentos.get(surgiu[:7], 0) + 1
+        desaparecimentos[visto[:7]] = desaparecimentos.get(visto[:7], 0) + 1
+        if surgiu == primeiro_dia:
+            censuradas_esq += 1
+        if visto == ultimo_dia:
+            censuradas_dir += 1
+
+    def _series(contagem: dict, mes_borda: str) -> list:
+        return [
+            {"ano_mes": mes, "urls": contagem[mes], "borda": mes == mes_borda}
+            for mes in sorted(contagem)
+        ]
+
+    return {
+        "primeiro_dia": primeiro_dia,
+        "ultimo_dia": ultimo_dia,
+        "mes_borda_inicial": mes_inicial,
+        "mes_borda_final": mes_final,
+        "surgimentos": _series(surgimentos, mes_inicial),
+        "desaparecimentos": _series(desaparecimentos, mes_final),
+        "censuradas_a_esquerda": censuradas_esq,
+        "censuradas_a_direita": censuradas_dir,
+        "urls": len(por_url),
+    }
 
 
 def snapshot(conn: sqlite3.Connection, destino: str) -> str:

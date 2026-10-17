@@ -15,6 +15,10 @@ Uso básico:
     py acervo.py backfill --site www.exemplo.com.br
     py acervo.py diario   --site www.exemplo.com.br     # agende este (semanal)
     py acervo.py status   --site www.exemplo.com.br
+    py acervo.py anotar   --site www.exemplo.com.br --data 2026-03-10 \
+                          --tipo conteudo-editado --desc "reescrevi o texto" \
+                          --urls-de urls_reescritas.txt
+    py acervo.py pacote   --site www.exemplo.com.br     # o que vai para a análise
 
 Subcomandos:
     aferir     Mede empiricamente como o teto de linhas da API se comporta neste
@@ -25,6 +29,12 @@ Subcomandos:
     diario     Re-busca a ponta que ainda assenta e incorpora os dias novos.
                É o comando para agendar.
     reingerir  Força a re-ingestão de um intervalo (--de/--ate).
+    anotar     Registra o que mudou no site e QUANDO — com as URLs afetadas.
+               É o que transforma a análise em comparação de URLs tratadas
+               contra não tratadas.
+    eventos    Lista (ou remove) os eventos anotados.
+    pacote     Gera relatorios/{dominio}/acervo/pacote/: snapshot do banco,
+               DADOS.md, eventos.csv, consultas.sql e extras/.
     status     O que existe no acervo, o que falta e o que não é confiável.
 
 Agendamento (Windows), depois de `aferir` e do primeiro `backfill`:
@@ -57,7 +67,7 @@ from config import (
     GSC_DELAY_DAYS,
 )
 from core.urls import build_site_url, normalize_domain
-from core.warehouse import plan, store
+from core.warehouse import pacote, plan, store
 
 # Vocabulário sugerido para `acervo.py anotar` (P7.2). Documentado aqui porque a
 # coluna `evento.tipo` é texto livre de propósito: evento é o que aconteceu, não
@@ -165,7 +175,44 @@ def _resumo_lote(resultado: dict) -> str:
     if not resultado.get("ok"):
         return f"[ERRO] {site:<28} {resultado.get('error', 'erro desconhecido')}"
     s = resultado.get("summary") or {}
+    # `pacote` nao faz requisicao nenhuma: imprimir "0 linhas 0 requisicoes"
+    # para ele seria verdade enganosa.
+    if "pasta" in s:
+        return f"[OK]   {site:<28} pacote em {s['pasta']} ({s.get('snapshot_mb', 0):.1f} MB)"
     return f"[OK]   {site:<28} {s.get('linhas', 0)} linhas  {s.get('requisicoes', 0)} requisicoes"
+
+
+def _coletar_urls(args) -> list:
+    """URLs do evento: de --urls (repetível, aceita vírgula) e de --urls-de arquivo.
+
+    As duas formas existem porque o caso real são DEZENAS ou CENTENAS de URLs
+    ("estas 243 URLs são o lote regionalizado"), e isso não cabe numa linha de
+    comando. O arquivo é uma URL por linha, `#` comenta, BOM tolerado.
+
+    Deduplica preservando a ordem informada — e NÃO normaliza: o que o analista
+    digitou é guardado como digitou, para auditoria. A normalização acontece só
+    no casamento com dim_pagina (store.chave_pagina).
+    """
+    brutas = []
+    for item in getattr(args, "urls", None) or []:
+        brutas.extend(parte for parte in item.split(","))
+
+    arquivo = getattr(args, "urls_de", None)
+    if arquivo:
+        if not os.path.exists(arquivo):
+            raise AcervoError(f"--urls-de: arquivo nao encontrado: {arquivo}")
+        with open(arquivo, encoding="utf-8-sig") as f:
+            for linha in f:
+                linha = linha.strip()
+                if linha and not linha.startswith("#"):
+                    brutas.append(linha)
+
+    vistas, urls = set(), []
+    for url in (u.strip() for u in brutas):
+        if url and url not in vistas:
+            vistas.add(url)
+            urls.append(url)
+    return urls
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +432,138 @@ def cmd_reingerir(args) -> dict:
     return _ingerir(args, inicio=args.de, fim=args.ate, graos=graos)
 
 
+def cmd_anotar(args) -> dict:
+    """Registra uma mudança no site, com as URLs afetadas. Dado, não análise."""
+    urls = _coletar_urls(args)
+    if args.tipo_evento not in TIPOS_EVENTO_SUGERIDOS:
+        print(
+            f"[acervo] Aviso: tipo '{args.tipo_evento}' esta fora do vocabulario sugerido "
+            f"({', '.join(TIPOS_EVENTO_SUGERIDOS)}). Nao e erro — `evento.tipo` e texto "
+            "livre de proposito — mas tipo consistente e o que deixa a timeline legivel."
+        )
+
+    conn, propriedade = _abrir(args.site)
+    try:
+        ident = store.adicionar_evento(
+            conn,
+            propriedade=propriedade,
+            data=args.data,
+            data_fim=args.ate,
+            tipo=args.tipo_evento,
+            descricao=args.desc,
+            urls=urls or None,
+            fonte=args.fonte,
+        )
+        casamento = store.casar_urls_evento(conn, evento_id=ident)[ident] if urls else None
+    finally:
+        conn.close()
+
+    periodo = f"{args.data} a {args.ate}" if args.ate else args.data
+    print(f"\n[acervo] Evento #{ident} registrado: {periodo}  [{args.tipo_evento}]")
+    print(f"  {args.desc}")
+    if casamento is None:
+        print(
+            "  SEM URLs. O evento entra na timeline, mas NAO vira coorte: sem URLs nao da "
+            "para comparar as paginas tratadas contra as demais. Se voce sabe quais paginas "
+            "o evento tocou, informe-as (--urls ou --urls-de) — e a peca que carrega o "
+            "argumento da analise."
+        )
+        return {"evento_id": ident, "urls": 0}
+
+    print(f"  URLs informadas: {casamento['informadas']}")
+    print(f"  casadas em dim_pagina: {casamento['casadas']}")
+    if casamento["sem_casamento"]:
+        print(
+            f"  NAO casaram ({len(casamento['sem_casamento'])}): ou a URL nunca teve "
+            "impressao (e por isso nao esta em dim_pagina), ou a forma informada nao "
+            "corresponde a que o GSC devolve. A comparacao do GSC ignora protocolo, www, "
+            "barra final, query e percent-encoding — se mesmo assim nao casou, confira o "
+            "caminho:"
+        )
+        for url in casamento["sem_casamento"][:10]:
+            print(f"    - {url}")
+        if len(casamento["sem_casamento"]) > 10:
+            print(f"    ... (+{len(casamento['sem_casamento']) - 10})")
+        print(
+            "  O evento foi gravado de todo jeito, e o casamento e refeito a cada "
+            "`pacote` — uma URL publicada agora entra em dim_pagina na proxima ingestao."
+        )
+    return {"evento_id": ident, "urls": casamento["informadas"], "casadas": casamento["casadas"]}
+
+
+def cmd_eventos(args) -> dict:
+    """Lista (ou remove) os eventos anotados do site."""
+    conn, propriedade = _abrir(args.site)
+    try:
+        if args.remover:
+            removido = store.remover_evento(conn, args.remover)
+            print(
+                f"[acervo] Evento #{args.remover} "
+                + ("removido (com a coorte de URLs)." if removido else "NAO encontrado.")
+            )
+            if not removido:
+                raise AcervoError(f"evento #{args.remover} nao existe neste banco")
+        store.casar_urls_evento(conn)
+        eventos = store.listar_eventos(conn, propriedade=propriedade)
+        urls_por_evento = (
+            {ev["id"]: store.paginas_do_evento(conn, ev["id"]) for ev in eventos}
+            if args.urls
+            else {}
+        )
+    finally:
+        conn.close()
+
+    print("\n" + "=" * 78)
+    print(f"  Eventos anotados — {propriedade}")
+    print("=" * 78)
+    if not eventos:
+        print("  (nenhum) — sem evento anotado, qualquer inflexao da serie fica sem causa")
+        print("  candidata. Anote o que voce sabe ter feito: `acervo.py anotar --help`")
+    for ev in eventos:
+        periodo = ev["data"] if ev["data_fim"] == ev["data"] else f"{ev['data']}..{ev['data_fim']}"
+        print(f"  #{ev['id']:<4} {periodo:<24} {ev['tipo']:<18} {ev['descricao']}")
+        if ev["urls_informadas"]:
+            print(
+                f"         URLs: {ev['urls_casadas']} casadas de {ev['urls_informadas']} "
+                f"informadas   (fonte: {ev['fonte'] or '—'})"
+            )
+        for url in urls_por_evento.get(ev["id"], []):
+            print(f"           - {url}")
+    print("=" * 78 + "\n")
+    return {"eventos": eventos}
+
+
+def cmd_pacote(args) -> dict:
+    """Gera o pacote de análise: snapshot + DADOS.md + CSVs + consultas + extras/."""
+    dominio = normalize_domain(args.site)
+    conn, propriedade = _abrir(args.site)
+    try:
+        resultado = pacote.gerar(
+            conn,
+            propriedade=propriedade,
+            site=dominio,
+            tipo=args.tipo,
+            reduzido=args.reduzido,
+            com_snapshot=not args.sem_snapshot,
+        )
+    finally:
+        conn.close()
+
+    print("\n" + "=" * 78)
+    print(f"  Pacote de analise — {propriedade}")
+    print("=" * 78)
+    print(pacote.resumo_texto(resultado))
+    print("-" * 78)
+    print("  Leia o DADOS.md ANTES de concluir qualquer coisa: as secoes 4 a 7 existem")
+    print("  porque cada uma corresponde a uma leitura errada que este dado ja produziu.")
+    print("=" * 78 + "\n")
+    return {
+        "pasta": resultado["pasta"],
+        "snapshot_mb": resultado["snapshot_mb"],
+        "eventos": resultado["eventos"],
+    }
+
+
 def cmd_status(args) -> dict:
     conn, propriedade = _abrir(args.site)
     try:
@@ -522,6 +701,62 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="apaga tambem as linhas de fato (para pagina/query que desapareceu)",
     )
 
+    p_an = sub.add_parser(
+        "anotar",
+        help="registra o que mudou no site e quando (com as URLs afetadas)",
+        description=(
+            "Registra uma mudanca no site. As URLs sao o que transforma a analise em "
+            "comparacao: com elas, 'reescrevi o texto destas 40 URLs' vira um grupo "
+            "tratado contra o resto do site. Use --urls-de para lotes grandes."
+        ),
+    )
+    p_an.add_argument("--site", required=True)
+    p_an.add_argument("--data", required=True, help="data (ISO) do evento ou do inicio")
+    p_an.add_argument("--ate", help="data final (ISO) para evento que levou dias")
+    p_an.add_argument(
+        "--tipo",
+        dest="tipo_evento",
+        required=True,
+        help=f"vocabulario sugerido (texto livre): {', '.join(TIPOS_EVENTO_SUGERIDOS)}",
+    )
+    p_an.add_argument("--desc", required=True, help="o que mudou, em uma frase")
+    p_an.add_argument(
+        "--urls",
+        action="append",
+        help="URLs afetadas (repetivel; aceita lista separada por virgula)",
+    )
+    p_an.add_argument(
+        "--urls-de",
+        dest="urls_de",
+        help="arquivo com uma URL por linha (# comenta) — para lotes grandes",
+    )
+    p_an.add_argument("--fonte", default="manual", help="quem/como registrou (padrao: manual)")
+
+    p_ev = sub.add_parser("eventos", help="lista (ou remove) os eventos anotados")
+    p_ev.add_argument("--site", required=True)
+    p_ev.add_argument("--remover", type=int, help="id do evento a remover")
+    p_ev.add_argument("--urls", action="store_true", help="lista tambem as URLs casadas")
+
+    p_pac = sub.add_parser("pacote", help="gera o pacote de analise (snapshot + DADOS.md)")
+    alvo_pac = p_pac.add_mutually_exclusive_group(required=True)
+    alvo_pac.add_argument("--site", help="dominio ou sc-domain:")
+    alvo_pac.add_argument("--batch", help="arquivo com um dominio por linha")
+    p_pac.add_argument("--tipo", default="web", choices=plan.TIPOS_VALIDOS)
+    p_pac.add_argument(
+        "--reduzido",
+        action="store_true",
+        help=(
+            "snapshot sem fato_query_pagina (mais da metade do volume). O DADOS.md "
+            "declara o que ficou de fora"
+        ),
+    )
+    p_pac.add_argument(
+        "--sem-snapshot",
+        dest="sem_snapshot",
+        action="store_true",
+        help="regenera so os documentos, sem recopiar o banco",
+    )
+
     p_st = sub.add_parser("status", help="o que existe, o que falta, o que nao e confiavel")
     p_st.add_argument("--site", required=True)
     p_st.add_argument("--tipo", default="web", choices=plan.TIPOS_VALIDOS)
@@ -530,7 +765,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 
 def _validar_datas(args) -> None:
-    for campo in ("de", "ate"):
+    for campo in ("de", "ate", "data"):
         valor = getattr(args, campo, None)
         if valor is None:
             continue
@@ -541,6 +776,10 @@ def _validar_datas(args) -> None:
     de, ate = getattr(args, "de", None), getattr(args, "ate", None)
     if de and ate and de > ate:
         raise AcervoError(f"--de ({de}) e posterior a --ate ({ate})")
+    # `anotar` usa --data/--ate como inicio/fim do mesmo evento.
+    data = getattr(args, "data", None)
+    if data and ate and data > ate:
+        raise AcervoError(f"--data ({data}) e posterior a --ate ({ate})")
 
 
 COMANDOS = {
@@ -548,6 +787,9 @@ COMANDOS = {
     "backfill": cmd_backfill,
     "diario": cmd_diario,
     "reingerir": cmd_reingerir,
+    "anotar": cmd_anotar,
+    "eventos": cmd_eventos,
+    "pacote": cmd_pacote,
     "status": cmd_status,
 }
 

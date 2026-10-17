@@ -77,13 +77,24 @@ py acervo.py aferir   --site www.exemplo.com.br # 1x por site, ~8 req, nao grava
 py acervo.py backfill --site www.exemplo.com.br # 480 dias (--dry-run mostra o plano)
 py acervo.py diario   --site www.exemplo.com.br # agende semanal: e o que acumula
 py acervo.py status   --site www.exemplo.com.br
+# P7.2 — o pacote que vai para a sessao de analise (extracao, nunca veredito)
+py acervo.py anotar   --site www.exemplo.com.br --data 2026-03-10 [--ate 2026-03-14] \
+    --tipo conteudo-editado --desc "..." [--urls a,b | --urls-de urls.txt]
+#   as URLs sao a peca que vira coorte: `evento_pagina` casa a forma do projeto
+#   com a do GSC (store.chave_pagina: canonical_path + unquote) e e o que permite
+#   comparar URLs tratadas contra nao tratadas
+py acervo.py eventos  --site www.exemplo.com.br [--remover ID] [--urls]
+py acervo.py pacote   --site www.exemplo.com.br [--reduzido] [--sem-snapshot]
+#   gera relatorios/{dom}/acervo/pacote/: snapshot (Connection.backup), DADOS.md,
+#   eventos.csv, evento_urls.csv, consultas.sql e extras/ (exports manuais da UI).
+#   --reduzido tira fato_query_pagina (>metade do volume) e DECLARA isso no DADOS.md
 
 # CLI crawl budget (100% local, SEM cota — lê o access log do servidor)
 py logs.py --site www.exemplo.com.br --logs access.log [access.log.1.gz ...]
 #   --gsc  cruza com o último _posicao.json (money pages subcrawladas)
 #   --verify-googlebot  confirma o bot por DNS (lento)   --no-sitemap  --format
 
-# Testes  (482 testes; rode da pasta gsc-monitor/)
+# Testes  (591 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 

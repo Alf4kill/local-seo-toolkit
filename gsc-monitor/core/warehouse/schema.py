@@ -33,7 +33,7 @@ REGRAS DE LEITURA DESTE BANCO (valem para qualquer análise futura):
 
 import sqlite3
 
-VERSAO_ESQUEMA = 1
+VERSAO_ESQUEMA = 2
 
 # WAL: a análise (leitura) não bloqueia a ingestão (escrita) e vice-versa.
 PRAGMAS = (
@@ -223,6 +223,26 @@ DDL = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS ix_evento_data ON evento (propriedade, data)",
+    # ── Coorte de URL de um evento: `evento.urls` RESOLVIDO contra dim_pagina ─
+    # `evento.urls` é o texto que o analista digitou (a forma do PROJETO do
+    # site); `dim_pagina.url` é a forma que o GSC devolveu. As duas divergem em
+    # barra final, www, protocolo e percent-encoding, então cruzar as duas em
+    # SQL puro não funciona — a normalização é código (store.chave_pagina, que
+    # usa core/urls.py:canonical_path). Esta tabela guarda o resultado desse
+    # casamento para que o SQL ad-hoc da análise consiga dizer
+    # "tratadas contra não tratadas" com um JOIN e nada mais.
+    #
+    # É CACHE, não verdade: é recalculada no `anotar` e de novo no `pacote`,
+    # porque uma URL do evento pode só entrar em dim_pagina numa ingestão
+    # posterior (URL publicada depois do evento ser anotado).
+    """
+    CREATE TABLE IF NOT EXISTS evento_pagina (
+        evento_id INTEGER NOT NULL REFERENCES evento(id) ON DELETE CASCADE,
+        pagina_id INTEGER NOT NULL REFERENCES dim_pagina(id),
+        PRIMARY KEY (evento_id, pagina_id)
+    ) WITHOUT ROWID
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_evento_pagina_pagina ON evento_pagina (pagina_id)",
     # ── Detector passivo de superfícies novas ───────────────────────────────
     # Um valor NOVO de searchAppearance é precisamente como uma superfície de IA
     # apareceria primeiro na API existente — sem ninguém rodar sonda nenhuma.
@@ -324,11 +344,35 @@ VIEWS = (
            tipo, descricao, urls, fonte
     FROM evento
     """,
+    # A coorte do evento em forma utilizável: uma linha por (evento, URL do GSC).
+    """
+    CREATE VIEW IF NOT EXISTS v_evento_pagina AS
+    SELECT e.id AS evento_id, e.propriedade, e.data, COALESCE(e.data_fim, e.data) AS data_fim,
+           e.tipo, e.descricao, ep.pagina_id, p.url AS pagina
+    FROM evento_pagina ep
+    JOIN evento     e ON e.id = ep.evento_id
+    JOIN dim_pagina p ON p.id = ep.pagina_id
+    """,
 )
 
-# Migrações futuras: {versao_destino: (stmt, ...)}. Cada uma roda na sua própria
+# Migrações: {versao_destino: (stmt, ...)}. Cada uma roda na sua própria
 # transação, em ordem, e só depois `PRAGMA user_version` é atualizado.
-MIGRACOES: dict = {}
+#
+# v2 (P7.2) acrescenta `evento_pagina`. É aditiva e idempotente: um banco v1 com
+# 700 mil linhas de fato ganha a tabela vazia em milissegundos, sem tocar em
+# fato nenhum — e a coorte é reconstruída no `anotar`/`pacote` seguinte.
+MIGRACOES: dict = {
+    2: (
+        """
+        CREATE TABLE IF NOT EXISTS evento_pagina (
+            evento_id INTEGER NOT NULL REFERENCES evento(id) ON DELETE CASCADE,
+            pagina_id INTEGER NOT NULL REFERENCES dim_pagina(id),
+            PRIMARY KEY (evento_id, pagina_id)
+        ) WITHOUT ROWID
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_evento_pagina_pagina ON evento_pagina (pagina_id)",
+    ),
+}
 
 
 def aplicar_pragmas(conn: sqlite3.Connection) -> None:

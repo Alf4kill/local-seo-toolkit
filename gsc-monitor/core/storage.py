@@ -702,6 +702,19 @@ def _acervo_path(site: str, date: str, suffix: str, ext: str) -> str:
     return os.path.join(_acervo_dir(site), f"{date}_{suffix}.{ext}")
 
 
+def acervo_pacote_dir(site: str) -> str:
+    """
+    Pasta do pacote de análise do domínio:
+        relatorios/{safe_domain}/acervo/pacote/
+
+    É esta pasta inteira que atravessa a fronteira para a sessão de análise —
+    snapshot do banco, DADOS.md, eventos.csv, consultas.sql e extras/.
+    """
+    folder = os.path.join(_acervo_dir(site), "pacote")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
 def acervo_db_path(site: str) -> str:
     """Caminho do banco do acervo: relatorios/{dominio}/acervo/acervo.sqlite3.
 
