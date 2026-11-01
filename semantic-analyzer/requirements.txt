@@ -12,7 +12,7 @@ numpy==2.5.4
 
 # Embeddings semânticos (recomendado) — puxa torch + transformers automaticamente.
 # Roda em CPU; 1º uso baixa o modelo (~470MB). Trave a versão exata via lock (acima).
-sentence-transformers>=6.1.0
+sentence-transformers>=6.2.0
 
 # Fallback léxico (TF-IDF) e utilitários. (scikit-learn também vem com sentence-transformers.)
 scikit-learn==1.9.1
