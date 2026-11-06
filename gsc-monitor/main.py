@@ -31,7 +31,8 @@ if hasattr(sys.stderr, "reconfigure"):
 import argparse
 from datetime import date
 
-from core.auth import build_service
+from config import INSPECT_MAX_CALLS, INSPECT_TTL_OK_DAYS, INSPECT_WORKERS
+from core.auth import build_service, load_credentials
 from core.sitemap import fetch_urls
 from core.storage import (
     append_historico,
@@ -91,6 +92,37 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ignora o cache e força novas chamadas à API (consome cota).",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=INSPECT_WORKERS,
+        help=(
+            f"Threads simultâneas na inspeção (padrão: {INSPECT_WORKERS}; "
+            "1 = modo sequencial). A vazão fica limitada pelo rate limiter "
+            "abaixo dos 600 QPM/site que o Google permite."
+        ),
+    )
+    parser.add_argument(
+        "--max-chamadas",
+        dest="max_chamadas",
+        type=int,
+        default=INSPECT_MAX_CALLS,
+        help=(
+            f"Freio de cota: máximo de chamadas à API nesta execução "
+            f"(padrão: {INSPECT_MAX_CALLS}). A cota é 2.000/dia POR SITE."
+        ),
+    )
+    parser.add_argument(
+        "--ttl-ok-dias",
+        dest="ttl_ok_dias",
+        type=int,
+        default=INSPECT_TTL_OK_DAYS,
+        help=(
+            f"Dias para reaproveitar resultados PASS (indexada) de execuções "
+            f"anteriores (padrão: {INSPECT_TTL_OK_DAYS}; 0 desliga). "
+            "Problemas nunca são reaproveitados de dias anteriores."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -127,7 +159,23 @@ def main() -> None:
 
     # 3. Inspeção via API
     print(f"[main] Inspecionando {len(urls)} URL(s)...\n")
-    url_results = inspect_urls(service, args.site, urls, use_cache=not args.no_cache)
+    # As credenciais vão junto porque o modo paralelo precisa montar um
+    # httplib2.Http por thread (o do service é compartilhado e não é
+    # thread-safe). load_credentials() reusa o que build_service() já abriu.
+    try:
+        credentials = load_credentials()
+    except FileNotFoundError:
+        credentials = None
+    url_results = inspect_urls(
+        service,
+        args.site,
+        urls,
+        use_cache=not args.no_cache,
+        workers=args.workers,
+        credentials=credentials,
+        max_calls=args.max_chamadas,
+        ttl_ok_days=args.ttl_ok_dias,
+    )
 
     # 4. Gera relatórios
     detailed = build_detailed(domain, today, url_results)

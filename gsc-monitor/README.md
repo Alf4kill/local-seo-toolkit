@@ -128,6 +128,26 @@ tarefa agendada usa o refresh silencioso do token, sem abrir janelas).
 .\.venv\Scripts\python.exe main.py --site www.exemplo.com.br --limit 10
 ```
 
+A inspeção roda **em paralelo**. O limite oficial da URL Inspection API é de
+**2.000 chamadas por dia e 600 por minuto, por site** ([Usage
+Limits](https://developers.google.com/webmaster-tools/limits)); o modo antigo,
+sequencial, usava só ~45 QPM — 7% do permitido. Com 6 threads e um rate limiter
+de 8 req/s (480 QPM, 80% do teto), um site de 874 páginas sai de ~24 min para
+**~3 min**.
+
+| Flag | Descrição |
+|---|---|
+| `--workers N` | Threads simultâneas (padrão **6**). `1` volta ao modo sequencial. |
+| `--max-chamadas N` | Freio de cota: teto de chamadas à API por execução (padrão **2000**). URLs acima do teto aparecem no relatório como `unknown` / `quota_guard_skip` — nunca como se tivessem sido lidas. |
+| `--ttl-ok-dias N` | Dias para reaproveitar do cache resultados `PASS` de execuções anteriores (padrão **7**; `0` desliga). |
+| `--no-cache` | Ignora o cache e força chamadas frescas (consome cota). |
+
+> **Paralelizar não aumenta a cota** — só a esgota mais rápido. Quem resolve o
+> problema de cota é o `--ttl-ok-dias`: uma página indexada muda de estado
+> devagar, então seu resultado vale uma semana, enquanto qualquer problema
+> (FAIL/NEUTRAL) é reinspecionado no dia seguinte. Num site de ~870 páginas,
+> isso derruba o run diário de ~870 chamadas para ~150.
+
 ### Plano de Poda — remoção de páginas antigas (GUI dedicada + CLI)
 
 Premissa (convenção interna): o sitemap lista **todas** as páginas ativas —
@@ -438,7 +458,7 @@ sugestão de destino (casariam com qualquer página).
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Saída esperada: **655 testes OK**. Toda a suíte roda no pytest (config em
+Saída esperada: **726 testes OK**. Toda a suíte roda no pytest (config em
 `pytest.ini`); as chamadas de rede são mockadas, então nenhum teste gasta cota.
 A CI ainda aplica um piso de cobertura (40%).
 

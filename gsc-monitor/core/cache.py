@@ -9,12 +9,20 @@ Estrutura em disco:
 TTL padrão:
     Indexação  : 24 h  — re-inspeciona no dia seguinte
     Posicionamento : 72 h  — dados do GSC têm delay de 2-3 dias, não mudam mais rápido
+
+TTL por veredito (indexação): o arquivo do dia continua valendo 24 h para
+tudo, mas load_inspect_window() também varre os dias ANTERIORES e reaproveita
+só os resultados PASS (página indexada), que mudam de estado devagar. Isso
+existe porque a cota da URL Inspection é 2.000/dia POR SITE: num site de ~870
+páginas, reinspecionar tudo todo dia consome metade da cota sem informação
+nova. Problemas (FAIL/NEUTRAL/unknown) nunca são reaproveitados de dias
+anteriores — são exatamente o que precisa de releitura.
 """
 
 import json
 import os
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from core.storage import _get_domain_dir
 
@@ -143,6 +151,68 @@ def get_inspect_cache(site: str, date_str: str, url: str) -> dict | None:
     if day_cache is None:
         return None
     return day_cache.get(url)
+
+
+def load_inspect_window(site: str, date_str: str, ttl_ok_days: int = 0) -> dict:
+    """
+    Carrega de uma vez só o mapa {url → result} aproveitável para uma execução.
+
+    Substitui o padrão antigo de chamar get_inspect_cache() por URL, que
+    reabria e reparseava o arquivo do dia a cada uma das N URLs (1,1 s em 874
+    URLs, e crescendo com o tamanho do site).
+
+    Regras:
+        - arquivo do dia (date_str): vale para QUALQUER veredito, dentro do
+          TTL de 24 h — é o comportamento histórico, preservado;
+        - dias anteriores, até ttl_ok_days atrás: só entram resultados com
+          verdict == "PASS" (página indexada). Um resultado de hoje sempre
+          ganha de um resultado mais antigo da mesma URL.
+
+    ttl_ok_days = 0 desliga a janela estendida (só o arquivo do dia).
+    """
+    janela: dict[str, dict] = {}
+
+    # Dos mais antigos para os mais novos: o dia de hoje sobrescreve por último.
+    if ttl_ok_days and ttl_ok_days > 0:
+        try:
+            hoje = date.fromisoformat(date_str)
+        except ValueError:
+            hoje = None
+        if hoje is not None:
+            for atras in range(ttl_ok_days, 0, -1):
+                dia = (hoje - timedelta(days=atras)).isoformat()
+                # Dias anteriores são lidos pela DATA do arquivo, não pelo
+                # cached_at: o TTL aqui é a janela em dias, não as 24 h.
+                entry = _read_entry(_cache_path(site, f"inspect_{dia}"))
+                if entry is None or not isinstance(entry.get("data"), dict):
+                    continue
+                for url, result in entry["data"].items():
+                    if isinstance(result, dict) and result.get("verdict") == "PASS":
+                        janela[url] = result
+
+    hoje_cache = _load_inspect_day(site, date_str)
+    if hoje_cache:
+        janela.update(hoje_cache)
+
+    return janela
+
+
+def set_inspect_cache_bulk(site: str, date_str: str, results: dict) -> None:
+    """
+    Grava vários resultados no cache do dia numa única leitura + escrita.
+
+    Mesma semântica de set_inspect_cache (mescla com o que já existe, ignora o
+    TTL na escrita), mas sem o custo O(n²) de reescrever o arquivo inteiro a
+    cada URL — eram 14,9 s de disco puro em 874 URLs.
+    """
+    if not results:
+        return
+    key = f"inspect_{date_str}"
+    path = _cache_path(site, key)
+    entry = _read_entry(path)
+    url_cache = entry["data"] if (entry and isinstance(entry.get("data"), dict)) else {}
+    url_cache.update(results)
+    _write_entry(path, url_cache)
 
 
 # ---------------------------------------------------------------------------

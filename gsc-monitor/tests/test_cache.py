@@ -172,7 +172,9 @@ def test_inspector_use_cache_false():
         def inspect(self, body):
             return self
 
-        def execute(self):
+        # **kwargs porque o inspector passa num_retries (e http, no modo
+        # paralelo) — a assinatura real de HttpRequest.execute aceita os dois.
+        def execute(self, **kwargs):
             return {
                 "inspectionResult": {
                     "indexStatusResult": {

@@ -58,8 +58,35 @@ GSC_DELAY_DAYS = 3  # o GSC atrasa ~2-3 dias; end_date = hoje - este valor
 # Outras APIs externas.
 # ---------------------------------------------------------------------------
 TRENDS_GEO = "BR"  # geo padrão do Google Trends (fetchers/trends_fetcher.py)
-INSPECT_DELAY = 0.5  # s entre chamadas da URL Inspection (cota 2000/dia)
+INSPECT_DELAY = 0.5  # s entre chamadas no modo sequencial (INSPECT_WORKERS = 1)
 NLP_DELAY = 0.5  # s entre chamadas da Cloud Natural Language API
+
+# ---------------------------------------------------------------------------
+# URL Inspection — paralelismo e cota.
+#
+# Limites oficiais (developers.google.com/webmaster-tools/limits), POR SITE:
+#     2.000 QPD  (queries por dia)   e   600 QPM  (queries por minuto = 10 QPS)
+#
+# O modo sequencial com INSPECT_DELAY usava ~45 QPM — 7% do permitido. Os
+# valores abaixo ficam com folga deliberada sob o teto: o rate limiter (não o
+# número de workers) é o que garante a vazão, porque se a API responder rápido
+# N workers sozinhos estouram o QPM.
+#
+# ATENÇÃO: paralelizar NÃO aumenta a cota diária — só a esgota mais rápido.
+# Por isso INSPECT_MAX_CALLS existe como freio explícito.
+# ---------------------------------------------------------------------------
+INSPECT_WORKERS = 6  # threads simultâneas (1 = modo sequencial legado)
+INSPECT_MAX_QPS = 8.0  # teto do rate limiter = 480 QPM (80% dos 600 QPM)
+INSPECT_MAX_CALLS = 2000  # freio de cota: chamadas de API por execução
+INSPECT_RETRIES = 5  # num_retries do cliente Google (backoff p/ 429 e 5xx)
+INSPECT_TIMEOUT = 60  # s de timeout por requisição HTTP
+INSPECT_CACHE_FLUSH_EVERY = 25  # grava o cache do dia a cada N resultados
+
+# TTL por veredito: uma página PASS (indexada) muda de estado devagar, então
+# seu resultado vale vários dias; qualquer problema é reinspecionado no dia
+# seguinte. É o que derruba o volume de um run diário de ~870 para ~150.
+# 0 desliga o TTL estendido (volta ao comportamento antigo de 24h para tudo).
+INSPECT_TTL_OK_DAYS = 7
 
 # ---------------------------------------------------------------------------
 # Acervo (P7 — armazém histórico em SQLite; core/warehouse/ + acervo.py).

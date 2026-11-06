@@ -68,6 +68,7 @@ def _run_indexation(
     limit: int | None,
     formats: set,
     use_cache: bool,
+    credentials=None,
 ) -> None:
     """Executa o relatório de indexação (URL Inspection API)."""
     from core.sitemap import fetch_urls
@@ -102,7 +103,7 @@ def _run_indexation(
         print(f"[indexação] Limite aplicado: {len(urls)} URLs.")
 
     print(f"[indexação] Inspecionando {len(urls)} URL(s)...\n")
-    url_results = inspect_urls(service, site, urls, use_cache=use_cache)
+    url_results = inspect_urls(service, site, urls, use_cache=use_cache, credentials=credentials)
 
     detailed = build_detailed(domain, today, url_results)
     consolidated = build_consolidated(domain, today, url_results)
@@ -439,7 +440,7 @@ def run_tasks(
                 print("  Modo: cache DESATIVADO")
             print(f"{'=' * 55}\n")
 
-            from core.auth import build_service
+            from core.auth import build_service, load_credentials
 
             try:
                 service = build_service()
@@ -447,8 +448,17 @@ def run_tasks(
                 print(f"\n[ERRO] {exc}")
                 return
 
+            # Reusa as credenciais já abertas por build_service(): o inspector
+            # paralelo precisa delas para montar um Http por thread.
+            try:
+                credentials = load_credentials()
+            except FileNotFoundError:
+                credentials = None
+
             if params.get("do_indexation"):
-                _run_indexation(service, site, domain, today, limit, formats, use_cache)
+                _run_indexation(
+                    service, site, domain, today, limit, formats, use_cache, credentials
+                )
 
             if params.get("do_position"):
                 _run_position(

@@ -59,6 +59,10 @@ py posicao.py --site www.exemplo.com.br --excel --queries --content --nlp
 
 # CLI indexação (cuidado com a cota 2.000/dia — use --limit ao testar)
 py main.py --site www.exemplo.com.br --limit 10
+#   P9 — inspeção paralela: 6 threads + rate limiter de 8 req/s (480 de 600 QPM)
+#   --workers N        threads (padrão 6; 1 = sequencial legado)
+#   --max-chamadas N   freio de cota por execução (padrão 2000)
+#   --ttl-ok-dias N    reaproveita PASS de execuções anteriores (padrão 7; 0 off)
 
 # Plano de Poda (P6) — URLs antigas = fora do sitemap (convenção: sitemap completo)
 py app_poda.py                                  # GUI dedicada (2 etapas)
@@ -109,7 +113,7 @@ py dossie.py fechar  --site www.exemplo.com.br   # copia o pacote do acervo, reg
 #   core/dossie/ = lógica pura (ficha, html, sitemaps, alvos, projeto, saidas, leia);
 #   fetchers/site_crawler.py = IO. Extração, nunca veredito (mesma regra do acervo).
 
-# Testes  (655 testes; rode da pasta gsc-monitor/)
+# Testes  (726 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```
 
@@ -235,9 +239,30 @@ run**; `historico_posicao.json` acumula até 30 snapshots por domínio.
   nos artefatos (HTML/Excel).
 - **HTML sempre escapado:** todo texto externo (entidades, KG, queries, URLs) no
   dashboard passa por `html.escape()`. Mantenha isso ao adicionar seções.
+- **Sitemap: falha de rede ≠ sitemap ausente (P9.1).** `core/sitemap.py` retenta
+  transitórios (timeout, conexão, 429, 5xx e a família **52x do Cloudflare** —
+  521 = origem fora do ar) com backoff + jitter, e NÃO retenta 4xx. A mensagem
+  de erro diz o que houve em cada candidato e só afirma ausência quando tudo
+  respondeu 404 — antes, um 521 de 20% de chance virava "verifique se o sitemap
+  é público". **Sub-sitemap que falha levanta `RuntimeError`** em vez de
+  devolver lista parcial: a poda trata o sitemap como whitelist completa, então
+  truncar em silêncio marcaria página viva como fantasma (410).
 - **Cache por domínio** em `relatorios/{dom}/.cache/`: posição 72h, queries 72h,
   inspect 24h, KG 7d, NLP 72h (`nlp2_`), trends 24h, **texto 72h** (`text_`).
   `--no-cache` força fresco. Erros de API nunca são cacheados.
+- **Inspeção: TTL por veredito (P9).** O arquivo do dia vale 24h para qualquer
+  veredito, mas `load_inspect_window` também varre os dias ANTERIORES e
+  reaproveita só os `PASS` (`INSPECT_TTL_OK_DAYS`, padrão 7). Problemas
+  (FAIL/NEUTRAL/unknown) nunca são reaproveitados de dias anteriores — são
+  exatamente o dado que muda. É o que derruba um run diário de ~870 chamadas
+  para ~150 e cabe na cota de 2.000/dia **por site**.
+- **O `service` do googleapiclient NÃO é thread-safe** (httplib2.Http
+  compartilhado): usado de várias threads devolve resposta trocada em
+  silêncio, sem erro. `inspector._thread_http()` monta um `AuthorizedHttp` por
+  thread a partir de `core.auth.load_credentials()`; sem credenciais o modo
+  paralelo é **recusado** e cai no sequencial (preferir lento a errado). O
+  token é renovado uma vez antes do pool (`refresh_if_needed`) porque
+  google-auth não serializa refresh.
 - **Reports são opcionais e degradam bem:** cada seção só aparece se houver dado.
   Ao adicionar parâmetro a `generate_dashboard`/`generate_excel`, propague em
   `posicao.py` E `gui/runner.py` (dois call sites).
@@ -304,6 +329,11 @@ loop do Move 2. Baseline de 8 URLs gravado em 2026-06-02.
   `component_alerts` em todas as superfícies; composto nunca suprimido.
 - **`severity`/tracking no Excel.** O acompanhamento (Move 2) só está no dashboard
   e terminal; falta uma aba no Excel.
+- ~~**Inspeção de indexação paralela.**~~ — FEITO (2026-11-06, P9): pool de 6
+  threads + token bucket de 8 req/s (480 de 600 QPM permitidos), Http por
+  thread, freio de cota e TTL por veredito. 874 URLs: ~24 min → ~3 min.
+  Pendente só a **rotação de URLs** (1/7 do site por dia), que o TTL por
+  veredito torna desnecessária abaixo de ~2.000 páginas.
 
 ### Médio
 - ~~**Trend first-party via dimensão `date` do GSC**~~ — FEITO (2026-06-10, P5):

@@ -577,6 +577,146 @@ controladas, blame de redirect, LEIA.md, CLI ponta a ponta). `py -m pytest` →
 
 ---
 
+## Fase 9 — Inspeção de indexação em paralelo ✅
+
+**Problema observado:** num site de **874 páginas**, a etapa de inspeção levava
+~25 min e dominava o tempo total da execução.
+
+**Diagnóstico.** `inspect_urls` era estritamente sequencial com `sleep(0.5)`
+fixo entre chamadas — **~45 QPM**. O limite oficial da URL Inspection API
+([Usage Limits](https://developers.google.com/webmaster-tools/limits)) é de
+**600 QPM e 2.000 QPD, por site**: o código usava **7%** do permitido. Em
+paralelo, `set_inspect_cache` relia e reescrevia o arquivo do dia inteiro a
+cada URL (custo O(n²)): **15,4 s** de disco puro em 874 URLs, mais 1,1 s de
+releitura no caminho de cache quente.
+
+**Arquivos criados:** `core/ratelimit.py` (token bucket thread-safe, relógio
+injetável), `tests/test_inspector.py`, `tests/test_ratelimit.py`
+**Modificados:** `fetchers/inspector.py`, `core/cache.py`, `core/auth.py`,
+`config.py`, `main.py`, `gui/runner.py`, `tests/test_cache.py`
+
+### O que mudou, em três camadas
+
+**1. Paralelismo.** `ThreadPoolExecutor` com `INSPECT_WORKERS` (6) threads e um
+**token bucket** de `INSPECT_MAX_QPS` (8 req/s = 480 QPM, 80% do teto). O
+bucket é que põe o teto na vazão: `max_workers` limita quantas requisições
+ficam em voo, não quantas partem por segundo — se a API responder em 200 ms, 8
+threads disparam 40 req/s. Resultados vão para uma lista pré-alocada por
+índice, então **a ordem de saída é a da entrada** mesmo com o pool.
+
+**2. I/O do cache.** `load_inspect_window()` carrega a janela inteira numa
+leitura (antes era um `get` por URL) e `set_inspect_cache_bulk()` grava em
+lotes de `INSPECT_CACHE_FLUSH_EVERY` (25) — uma execução interrompida continua
+não perdendo o que já obteve.
+
+**3. Chamar menos (o que de fato resolve a cota).** TTL por veredito: o arquivo
+do dia vale 24 h para qualquer veredito, mas dias anteriores só entregam
+resultados **`PASS`**, dentro de `INSPECT_TTL_OK_DAYS` (7). Uma página indexada
+muda de estado devagar; um problema (FAIL/NEUTRAL) é o dado que precisa de
+releitura e nunca é reaproveitado. Num site de ~870 páginas, o run diário cai
+de ~870 chamadas para ~150.
+
+### Armadilhas tratadas
+
+- **O `service` do googleapiclient não é thread-safe** — o `httplib2.Http`
+  interno é compartilhado e, usado de várias threads, devolve resposta trocada
+  **em silêncio**, sem levantar erro. `_thread_http()` monta um
+  `AuthorizedHttp` por thread (recomendação oficial da biblioteca). **Sem
+  credenciais o modo paralelo é recusado** e cai no sequencial: preferir lento
+  a errado.
+- **Refresh de token concorrente é corrida** (google-auth não o serializa):
+  `core.auth.refresh_if_needed()` renova uma vez antes de abrir o pool.
+  `load_credentials()` reusa o que `build_service()` já abriu, sem segundo
+  fluxo OAuth.
+- **429 fica mais provável com concorrência:** `execute(num_retries=5)` liga o
+  backoff exponencial nativo do cliente para 429/5xx.
+- **Paralelizar não aumenta a cota, só a esgota mais rápido:**
+  `INSPECT_MAX_CALLS` (2.000) é um freio explícito. URLs acima do teto entram
+  no relatório como `unknown` / `quota_guard_skip` — **nunca** como se tivessem
+  sido inspecionadas (regra de honestidade).
+- Erro em uma URL não derruba o pool nem entra no cache (comportamento antigo
+  preservado: é retentado na execução seguinte).
+
+### Medições (simuladas localmente, latência de 1,2 s/chamada — sem gastar cota)
+
+| modo | vazão | 874 URLs |
+|---|---|---|
+| sequencial (antes) | 37 QPM | **23,9 min** |
+| 6 workers (novo padrão) | 299 QPM | **2,9 min** |
+| 10 workers | 470 QPM | 1,9 min |
+
+I/O do cache em 874 URLs: gravação **15,37 s → 0,53 s** (29×); leitura
+**1,13 s → 0,014 s**.
+
+**Testes:** +17 (`test_inspector.py`: ordem preservada sob concorrência, um
+Http por thread chegando ao `execute`, recusa de paralelizar sem credenciais,
+erro isolado, freio de cota, janela por veredito, lote de gravação;
+`test_ratelimit.py`: rajada, regime permanente, reposição, pior janela de 60 s
+abaixo dos 600 QPM, uso concorrente real). `py -m pytest` → **726 testes OK**
+
+**Não feito:** rotação de URLs (inspecionar 1/7 do site por dia). O TTL por
+veredito dá o mesmo ganho com menos máquina; só vale revisitar se um site
+passar de ~2.000 páginas, onde nem a primeira execução cabe na cota diária.
+
+---
+
+## Fase 9.1 — Sitemap: retentativa e mensagem de erro honesta ✅
+
+**Sintoma relatado:** numa mesma execução da GUI, a etapa de **indexação**
+falhou com `Nenhum sitemap encontrado para 'www.exemplo.com.br'` e a de
+**posicionamento**, segundos depois, baixou o mesmo sitemap com **874 URLs**.
+
+**Causa.** O site fica atrás de Cloudflare e a origem responde **HTTP 521**
+("Web Server Is Down") de forma intermitente — medido em **4 de 20**
+requisições (20%), independente de User-Agent ou de pausa entre chamadas.
+`core.sitemap._get` engolia qualquer `RequestException` e qualquer status != 2xx
+devolvendo `None`, **sem nenhuma retentativa**. Como os 4 candidatos e o
+robots.txt falhavam na mesma rajada, o erro final afirmava que o sitemap não
+existia ou não era público — uma acusação errada sobre a configuração do site a
+partir de um soluço do servidor. Era exatamente o tipo de "confident but wrong"
+que é prioridade nº1 do projeto.
+
+**Arquivos modificados:** `core/sitemap.py`, `tests/test_sitemap.py`
+
+### O que mudou
+
+- **Retentativa com backoff + jitter** (3 tentativas, `dormir`/`jitter`
+  injetáveis — mesma convenção de `fetchers/gsc_retry.py`) para falhas
+  transitórias: timeout, erro de conexão, 408/425/429 e 5xx, **incluindo a
+  família 520-527 do Cloudflare**.
+- **4xx não é retentado.** Esperar não faz um sitemap ausente aparecer, e
+  gastaria tempo à toa.
+- **`_get` devolve `(Response | None, motivo)`** em vez de `None` puro: a
+  mensagem de erro passa a listar o que aconteceu em CADA candidato
+  (`https://.../sitemap.xml → HTTP 521`).
+- **Diagnóstico classificado**, em vez de um texto único: tudo 404 → "o sitemap
+  realmente não está nesses caminhos"; houve transitório → "o servidor falhou
+  de forma TRANSITÓRIA (...) isso NÃO significa que o sitemap não existe ou não
+  é público"; 4xx → "o servidor recusou o acesso".
+- **Sub-sitemap que falha agora levanta `RuntimeError`.** Antes imprimia um
+  `AVISO` e seguia, devolvendo uma lista **parcial** apresentada como completa.
+  Isso é perigoso aqui: a poda (P6) trata o sitemap como a whitelist de páginas
+  ativas, então uma URL ausente por soluço de rede vira "fantasma" e entra no
+  plano de 410. Falhar alto é melhor que podar página viva.
+- **User-Agent próprio** (`gsc-monitor/1.0`) no lugar de `python-requests/x`,
+  que parte dos WAFs bloqueia. Não era a causa aqui, mas é higiene.
+
+### Validação contra o site real
+
+30 execuções de `fetch_urls` contra o site-piloto: **30/30 com as
+874 URLs**, tendo a retentativa capturado e recuperado **6 erros 521 reais**.
+Com o código anterior, essas 6 execuções teriam falhado — com a mensagem
+errada.
+
+**Testes:** +10 em `tests/test_sitemap.py` (521 retentado com sucesso, timeout
+retentado, 404 não retentado e sem espera, desistência no limite de tentativas,
+as três mensagens de diagnóstico, sub-sitemap falho levantando em vez de
+truncar, retentativa salvando um sub-sitemap, User-Agent próprio). Os 3 testes
+de `TestSitemapFromRobots` foram atualizados para a nova assinatura de `_get`
+(não silenciados). `py -m pytest` → **726 testes OK**
+
+---
+
 ## Projeto Completo
 
 ## Dependências instaladas
@@ -594,7 +734,8 @@ openpyxl>=3.1.0
 
 ## Notas de uso
 
-1. **Testar com `--limit 5`** ao usar `main.py` para não consumir cota da URL Inspection API (2000/dia)
+1. **Testar com `--limit 5`** ao usar `main.py` para não consumir cota da URL Inspection API (2000/dia).
+   Desde a P9 a inspeção é paralela (`--workers`, padrão 6) e tem freio de cota (`--max-chamadas`, padrão 2000).
 2. **`posicao.py` não tem `--limit`** — usa todos do sitemap (Search Analytics API não tem cota restritiva)
 3. **Cache está ativo por padrão** — usar `--no-cache` para forçar dados frescos da API
 4. **Domínios de teste disponíveis:** `www.exemplo.com.br`, `www.exemplo.com`, `www.exemplo.com`
@@ -605,7 +746,7 @@ openpyxl>=3.1.0
 9. **API key Google Cloud:** env `GOOGLE_API_KEY` ou arquivo `google_api_key.txt` ou campo na GUI
 10. **pytrends:** requer `pip install pytrends`; sem ela `--trends` imprime instrução e pula
 11. **Dashboard HTML:** gerado automaticamente em `relatorios/{dominio}/dashboard.html` a cada execução de posicionamento; botão "Dashboard" na GUI abre no navegador
-12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 655 testes).
+12. **Rodar todos os testes:** `py -m pytest` na pasta `gsc-monitor/` (runner único; 726 testes).
 
 ---
 
