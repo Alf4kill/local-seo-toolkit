@@ -1,5 +1,13 @@
-# Dependabot: alertas e PRs de atualização para as dependências dos dois
+# Dependabot: alertas e PRs de atualização para as dependências dos três
 # pacotes Python + as actions da CI. Agrupado em PRs semanais para reduzir ruído.
+#
+# Todo pacote com requirements.txt precisa de uma entrada aqui: keyword-research
+# ficou de fora até 2026-11-06 e silenciosamente atrasou (ruff 0.15.16 enquanto
+# os outros dois já estavam em 0.17.3).
+#
+# O job de lint da CI NÃO é coberto: o `pip install ruff==` do ci.yml é um step
+# de workflow, não um manifesto, e o ecossistema github-actions só atualiza
+# versões de action. Ao subir o ruff, ajuste aquela linha à mão.
 version: 2
 updates:
   - package-ecosystem: "pip"
@@ -17,6 +25,15 @@ updates:
       interval: "weekly"
     groups:
       semantic-analyzer-deps:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/keyword-research"
+    schedule:
+      interval: "weekly"
+    groups:
+      keyword-research-deps:
         patterns:
           - "*"
 
