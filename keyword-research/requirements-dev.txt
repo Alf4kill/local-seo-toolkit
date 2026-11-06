@@ -4,6 +4,6 @@
 # pytest is the single test runner (config in pytest.ini); ruff does lint +
 # format (config in ../ruff.toml). Runtime deps live in requirements.txt.
 
-pytest>=8.0
-pytest-cov>=5.0
+pytest>=9.2.0
+pytest-cov>=7.1.0
 ruff==0.17.3
