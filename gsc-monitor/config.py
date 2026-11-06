@@ -148,3 +148,18 @@ UNDERCRAWLED_MIN_LOG_DAYS = 7
 
 # Quantas linhas exibir nas tabelas "top" do relatório de crawl (terminal/HTML).
 CRAWL_TOP_N = 25
+
+# ---------------------------------------------------------------------------
+# Dossiê de análise (P8 — dossie.py + core/dossie/).
+#
+# O dossiê mora FORA do repositório (padrão: <pasta-mãe do repo>/dossies, ou
+# seja E:\projetos\dossies quando o repo está em E:\projetos\projetoprst.com.br),
+# para dado de cliente nunca chegar perto de um commit. GSC_DOSSIES_DIR ou
+# `--raiz` sobrepõem.
+# ---------------------------------------------------------------------------
+DOSSIES_DIR = os.environ.get("GSC_DOSSIES_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(BASE_DIR)), "dossies"
+)
+DOSSIE_CRAWL_PAUSA = 0.5  # s entre requisições ao site (educado; sem cota)
+DOSSIE_CRAWL_MAX_URLS = 3000  # freio do crawl (sitemap + URLs do acervo)
+DOSSIE_MIN_ARQUIVOS_LOTE = 5  # arquivos de página no mesmo dia p/ virar candidato

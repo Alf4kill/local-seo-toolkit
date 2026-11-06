@@ -300,6 +300,52 @@ tráfego.
 
 ---
 
+### CLI — Dossiê de análise (P8)
+
+Junta, numa pasta **fora do repositório**, tudo o que é viável coletar de forma
+simples para a sessão de análise de UM site. Mesma regra do acervo: **extração,
+nunca veredito**. Padrão: `E:\projetos\dossies\{dominio}\` (a pasta-mãe do repo +
+`dossies`; `GSC_DOSSIES_DIR` ou `--raiz` sobrepõem).
+
+```bash
+py dossie.py iniciar --site www.exemplo.com.br --projeto E:\caminho\do\site   # pasta + FICHA.toml
+#   -> edite a FICHA (taxonomia, termos de marca) e largue os exports da UI em gsc_ui\
+py dossie.py site    --site www.exemplo.com.br        # foto do site ao vivo, SEM cota
+#   --tempo-max 600 para parar e retomar depois (mesmo dia)   --sem-acervo  --pausa 1
+py dossie.py projeto --site www.exemplo.com.br        # inventário, eventos candidatos, redirects
+py acervo.py anotar  --site www.exemplo.com.br ... --urls-de <dossie>\projeto\eventos\AAAA-MM-DD_x.txt
+py acervo.py pacote  --site www.exemplo.com.br --todos-os-tipos
+py dossie.py fechar  --site www.exemplo.com.br        # copia o pacote e regenera o LEIA.md
+py dossie.py status  --site www.exemplo.com.br        # imprime o LEIA.md
+```
+
+```
+dossies\{dominio}\
+  FICHA.toml     o que muda por site (editada à mão)
+  LEIA.md        gerado: o que existe, de quando é cada fonte, o que falta
+  acervo\        cópia do pacote do acervo (snapshot + DADOS.md + eventos)
+  gsc_ui\        exports manuais: AAAA-MM-DD_<chave>.<ext> (o LEIA.md lista as chaves)
+  site_vivo\AAAA-MM-DD\  robots.txt, sitemaps\, crawl.jsonl, resumo.csv, links_internos.csv, html\
+  projeto\       inventario.csv, eventos_candidatos.csv, eventos\*.txt, redirects.csv
+  analise\       saídas da sessão de análise
+dossies\_comum\google_updates.csv   calendário de updates, um para todos os sites
+```
+
+- **`site`** fotografa sitemap ∪ URLs que o acervo conhece, preservando a forma
+  EXATA que o Google indexou (maiúscula, barra final); só o `#fragmento` sai.
+  Registra a cadeia de redirect salto a salto, X-Robots-Tag, canonical, robots,
+  title, H1, palavras, links internos e schema. Retomável no mesmo dia. É a foto
+  de **hoje** — o LEIA.md diz isso ao lado da data do acervo.
+- **`projeto`** usa `git log` quando há histórico (sem git, cai para a data do
+  sistema de arquivos e declara). Eventos são **candidatos**: dias com
+  ≥ `--min-arquivos` páginas adicionadas/editadas/removidas e commits em
+  configuração. O casamento arquivo→URL é pelo nome do arquivo e vem rotulado
+  `unico` / `ambiguo` / `sem_par`. Redirects do `.htaccess`/nginx/`next.config`
+  saem com a data da linha (`git blame`).
+- Sem dependência nova: o HTML é lido com a stdlib (`html.parser`).
+
+---
+
 ## Relatórios gerados
 
 Todos os arquivos ficam em `relatorios/{dominio}/`:

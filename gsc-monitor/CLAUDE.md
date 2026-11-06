@@ -101,6 +101,14 @@ py logs.py --site www.exemplo.com.br --logs access.log [access.log.1.gz ...]
 #   --gsc  cruza com o último _posicao.json (money pages subcrawladas)
 #   --verify-googlebot  confirma o bot por DNS (lento)   --no-sitemap  --format
 
+# Dossiê de análise (P8) — pasta FORA do repo: E:\projetos\dossies\{dominio}\
+py dossie.py iniciar --site www.exemplo.com.br --projeto E:\caminho\do\site
+py dossie.py site    --site www.exemplo.com.br   # foto do site ao vivo, sem cota, retomável
+py dossie.py projeto --site www.exemplo.com.br   # inventário + eventos CANDIDATOS + redirects
+py dossie.py fechar  --site www.exemplo.com.br   # copia o pacote do acervo, regenera LEIA.md
+#   core/dossie/ = lógica pura (ficha, html, sitemaps, alvos, projeto, saidas, leia);
+#   fetchers/site_crawler.py = IO. Extração, nunca veredito (mesma regra do acervo).
+
 # Testes  (655 testes; rode da pasta gsc-monitor/)
 py -m pytest
 ```

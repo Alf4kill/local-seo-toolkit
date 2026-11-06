@@ -551,6 +551,32 @@ aplica a 410). `py -m pytest` → **302 testes OK**
 
 ---
 
+### P8 — Dossiê de análise por site ✅ (2026-10-18)
+**Por quê:** a análise de posicionamento acontece numa sessão com Claude (um
+Claude Project por método + a pasta do site). O acervo dá o *quando* e o *onde*;
+o *porquê* depende do site ao vivo, do projeto original e dos relatórios que só a
+UI do GSC tem. O dossiê junta tudo isso numa pasta fora do repo, com um LEIA.md
+que declara de quando é cada fonte e o que falta.
+
+**Arquivos criados:** `dossie.py` (CLI: iniciar, site, projeto, fechar, status),
+`core/dossie/` (`ficha`, `html`, `sitemaps`, `alvos`, `projeto`, `saidas`, `leia`),
+`fetchers/site_crawler.py`, `tests/test_dossie.py`. Constantes `DOSSIES_DIR`,
+`DOSSIE_CRAWL_PAUSA`, `DOSSIE_CRAWL_MAX_URLS`, `DOSSIE_MIN_ARQUIVOS_LOTE` em
+`config.py`.
+
+**Decisões:** pasta fora do repo (dado de cliente longe de commit); HTML lido com
+a stdlib (sem bs4, sem dependência nova); forma exata da URL preservada no crawl
+(as variantes indexadas são achado); eventos do projeto saem como CANDIDATOS com
+arquivo de URLs pronto para `acervo.py anotar --urls-de`; o mapeamento
+arquivo→URL é rotulado (`unico`/`ambiguo`/`sem_par`), nunca afirmado.
+
+**Testes:** +30 em `tests/test_dossie.py` (extração HTML, sitemaps, união
+sitemap×acervo, cadeia/loop de redirect, retomada do crawl, git real com datas
+controladas, blame de redirect, LEIA.md, CLI ponta a ponta). `py -m pytest` →
+**699 testes OK**
+
+---
+
 ## Projeto Completo
 
 ## Dependências instaladas
