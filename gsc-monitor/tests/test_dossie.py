@@ -19,7 +19,6 @@ import tempfile
 import unittest
 
 import pytest
-
 from core.dossie import alvos, ficha, html, leia, projeto, saidas, sitemaps
 from fetchers import site_crawler
 

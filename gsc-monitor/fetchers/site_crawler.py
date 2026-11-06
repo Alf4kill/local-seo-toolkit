@@ -22,7 +22,6 @@ import time
 from urllib.parse import urljoin
 
 import requests
-
 from core.dossie import html as html_extrator
 from core.dossie import sitemaps as sm
 

@@ -13,6 +13,7 @@ import os
 import re
 import sqlite3
 import unicodedata
+from datetime import UTC
 
 from core.dossie import saidas
 
@@ -341,9 +342,9 @@ def _data_arquivo(caminho: str) -> str:
     m = re.match(r"(\d{4}-\d{2}-\d{2})", os.path.basename(caminho))
     if m:
         return m.group(1)
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     try:
-        return datetime.fromtimestamp(os.path.getmtime(caminho), tz=timezone.utc).date().isoformat()
+        return datetime.fromtimestamp(os.path.getmtime(caminho), tz=UTC).date().isoformat()
     except OSError:
         return "?"

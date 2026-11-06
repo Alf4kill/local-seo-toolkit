@@ -34,7 +34,7 @@ if hasattr(sys.stderr, "reconfigure"):
 import argparse
 import os
 import shutil
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from config import (
     DOSSIE_CRAWL_MAX_URLS,
@@ -54,7 +54,7 @@ class DossieError(RuntimeError):
 
 
 def _agora() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def pasta_dossie(site: str, raiz: "str | None" = None) -> str:

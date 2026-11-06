@@ -19,7 +19,7 @@ import os
 import re
 import subprocess
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import unquote, urlsplit
 
 ARQUIVOS_CONFIG = (
@@ -61,9 +61,7 @@ def inventario(pasta: str, *, extensoes_pagina, ignorar) -> list:
                     "e_pagina": nome.lower().endswith(exts),
                     "e_config": e_config(rel),
                     "bytes": st.st_size,
-                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
-                    .date()
-                    .isoformat(),
+                    "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).date().isoformat(),
                 }
             )
     return saida
@@ -370,5 +368,5 @@ def parse_blame(texto: str) -> dict:
             linha_atual = int(m.group(1))
         elif linha.startswith("author-time ") and linha_atual is not None:
             ts = int(linha.split()[1])
-            datas[linha_atual] = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+            datas[linha_atual] = datetime.fromtimestamp(ts, tz=UTC).date().isoformat()
     return datas
